@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState } from 'react';
 
 export default function Sidebar() {
     const pathname = usePathname();
+    const [isOpen, setIsOpen] = useState(false);
     const isLoginPage = pathname === '/login' || pathname === '/';
 
     if (isLoginPage) return null;
@@ -20,33 +22,55 @@ export default function Sidebar() {
     ];
 
     return (
-        <aside className="w-64 bg-slate-900 h-screen sticky top-0 flex flex-col p-6 shadow-2xl z-50 shrink-0">
-            <div className="mb-12">
-                <h1 className="text-2xl font-black text-white italic tracking-tighter uppercase">
-                    SIS<span className="text-blue-500 text-3xl">.</span>ADMI
-                </h1>
-            </div>
+        <>
+            {/* Mobile Toggle Button */}
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="lg:hidden fixed top-4 right-4 z-[60] bg-blue-600 text-white p-3 rounded-2xl shadow-xl active:scale-90 transition-transform"
+            >
+                {isOpen ? '✕' : '☰'}
+            </button>
 
-            <nav className="flex-1 space-y-1">
-                {menu.map((item) => (
-                    <Link key={item.label} href={item.href}>
-                        <div className={`p-4 rounded-xl flex items-center gap-4 transition-all group ${pathname === item.href ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                            }`}>
-                            <span className="text-xl group-hover:scale-125 transition-transform">{item.icon}</span>
-                            <span className="font-bold text-sm uppercase tracking-wide">{item.label}</span>
+            {/* Sidebar Overlay */}
+            {isOpen && (
+                <div
+                    onClick={() => setIsOpen(false)}
+                    className="lg:hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[55]"
+                ></div>
+            )}
+
+            <aside className={`
+        w-64 bg-slate-900 h-screen sticky top-0 flex flex-col p-6 shadow-2xl z-[58] shrink-0
+        fixed lg:sticky lg:translate-x-0 transition-transform duration-300
+        ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
+                <div className="mb-12">
+                    <h1 className="text-2xl font-black text-white italic tracking-tighter uppercase">
+                        SIS<span className="text-blue-500 text-3xl">.</span>ADMI
+                    </h1>
+                </div>
+
+                <nav className="flex-1 space-y-1 overflow-y-auto custom-scrollbar">
+                    {menu.map((item) => (
+                        <Link key={item.label} href={item.href} onClick={() => setIsOpen(false)}>
+                            <div className={`p-4 rounded-xl flex items-center gap-4 transition-all group ${pathname === item.href ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                                }`}>
+                                <span className="text-xl group-hover:scale-125 transition-transform">{item.icon}</span>
+                                <span className="font-bold text-sm uppercase tracking-wide">{item.label}</span>
+                            </div>
+                        </Link>
+                    ))}
+                </nav>
+
+                <div className="mt-auto pt-6 border-t border-slate-800">
+                    <Link href="/login" onClick={() => localStorage.clear()}>
+                        <div className="p-4 rounded-xl text-red-400 hover:bg-red-500/10 flex items-center gap-4 transition-all">
+                            <span>🚪</span>
+                            <span className="font-black text-xs uppercase tracking-widest">Salir</span>
                         </div>
                     </Link>
-                ))}
-            </nav>
-
-            <div className="mt-auto pt-6 border-t border-slate-800">
-                <Link href="/login" onClick={() => localStorage.clear()}>
-                    <div className="p-4 rounded-xl text-red-400 hover:bg-red-500/10 flex items-center gap-4 transition-all">
-                        <span>🚪</span>
-                        <span className="font-black text-xs uppercase tracking-widest">Salir</span>
-                    </div>
-                </Link>
-            </div>
-        </aside>
+                </div>
+            </aside>
+        </>
     );
 }

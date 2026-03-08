@@ -1,25 +1,27 @@
-import './globals.css'
-import { Inter } from 'next/font/google'
-import Sidebar from '@/components/ui/Sidebar'
+import { Inter, Outfit } from "next/font-family";
+import "./globals.css";
+import Sidebar from "@/components/ui/Sidebar";
 
-const inter = Inter({ subsets: ['latin'] })
+const outfit = Outfit({ subsets: ["latin"], weight: ["100", "300", "400", "500", "700", "900"] });
 
 export const metadata = {
-    title: 'Sistema Administrativo Profesional',
-    description: 'Gestión de Inventario, POS, Clientes y Ventas en Venezuela',
-}
+    title: "SIS.ADMI - Sistema Administrativo Senior",
+    description: "Plataforma administrativa de alta precisión para inventario y ventas",
+};
 
 export default function RootLayout({ children }) {
     return (
         <html lang="es">
-            <body className={`${inter.className} bg-gray-50`}>
-                <div className="flex min-h-screen">
+            <body className={`${outfit.className} bg-gray-50`}>
+                <div className="flex flex-col lg:flex-row min-h-screen">
                     <Sidebar />
-                    <div className="flex-1">
-                        {children}
-                    </div>
+                    <main className="flex-1 w-full overflow-x-hidden relative">
+                        <div className="p-0 min-h-full">
+                            {children}
+                        </div>
+                    </main>
                 </div>
             </body>
         </html>
-    )
+    );
 }
