@@ -8,18 +8,28 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
     await dbConnect();
     try {
-        // Obtener tasa actual desde el scraper
         const newValue = await getBcvRate();
+        const lastRate = await ExchangeRate.findOne().sort({ createdAt: -1 });
 
-        // Guardar en la base de datos
-        const newRate = await ExchangeRate.create({
-            value: newValue,
-            date: new Date()
-        });
+        // Lógica Senior: Si no pudimos scrapear, devolvemos la última guardada o 36.5
+        if (!newValue) {
+            console.warn('Scraping returned null, using last database record.');
+            return NextResponse.json(lastRate || { value: 36.50 });
+        }
 
-        return NextResponse.json(newRate);
+        // Solo guardamos si hay un cambio significativo o no hay registros para ahorrar DB Atlas
+        let shouldSave = false;
+        if (!lastRate || Math.abs(lastRate.value - newValue) > 0.001) {
+            shouldSave = true;
+        }
+
+        if (shouldSave) {
+            const newRate = await ExchangeRate.create({ value: newValue, date: new Date() });
+            return NextResponse.json(newRate);
+        }
+
+        return NextResponse.json(lastRate);
     } catch (error) {
-        // Si falla el scraping, devolver la última guardada
         const lastRate = await ExchangeRate.findOne().sort({ createdAt: -1 });
         return NextResponse.json(lastRate || { value: 36.5, error: error.message });
     }

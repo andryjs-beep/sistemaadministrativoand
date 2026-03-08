@@ -4,87 +4,125 @@ import { useState, useEffect } from 'react';
 
 export default function CotizacionesPage() {
     const [quotes, setQuotes] = useState([]);
+    const [bcvRate, setBcvRate] = useState(36.50);
 
     useEffect(() => {
         fetchQuotes();
+        fetchBcv();
     }, []);
 
     const fetchQuotes = async () => {
         const res = await fetch('/api/quotations');
         const data = await res.json();
-        setQuotes(data);
+        setQuotes(Array.isArray(data) ? data : []);
     };
 
-    const convertToSale = async (id) => {
-        const quote = quotes.find(q => q._id === id);
-        if (!quote) return;
+    const fetchBcv = async () => {
+        const res = await fetch('/api/bcv');
+        const data = await res.json();
+        if (data.value) setBcvRate(data.value);
+    };
 
-        const paymentMethod = prompt('Ingresa el método de pago (ej: Pago Móvil):');
-        if (!paymentMethod) return;
+    const convertToSale = async (quote) => {
+        if (!confirm(`¿Convertir cotización ${quote.quotationId} en una venta final?`)) return;
 
-        const res = await fetch('/api/sales', {
-            method: 'POST',
-            body: JSON.stringify({
-                items: quote.items.map(item => ({ productId: item.productId._id, quantity: item.quantity })),
-                paymentMethod,
-                quotationId: id
-            })
-        });
+        try {
+            const res = await fetch('/api/sales', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    items: quote.items.map(i => ({ productId: i.productId?._id || i.productId, quantity: i.quantity })),
+                    paymentMethod: 'Dólares Efectivo', // Default
+                    quotationId: quote._id,
+                    customerId: quote.customerId?._id || quote.customerId
+                })
+            });
 
-        if (res.ok) {
-            alert('Convertido a venta con éxito');
-            fetchQuotes();
-        } else {
-            const err = await res.json();
-            alert(`Error: ${err.error}`);
+            if (res.ok) {
+                alert('Cotización convertida en venta exitosamente');
+                fetchQuotes();
+            } else {
+                const err = await res.json();
+                alert(`Error: ${err.error}`);
+            }
+        } catch (e) {
+            alert('Error de conexión');
         }
     };
 
     return (
-        <div className="min-h-screen bg-gray-950 text-white p-8">
-            <h1 className="text-3xl font-black mb-8 border-l-4 border-orange-500 pl-4">Gestión de Cotizaciones</h1>
+        <div className="p-10 bg-gray-50 min-h-full font-sans">
+            <header className="mb-10 flex justify-between items-end">
+                <div>
+                    <p className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] mb-2">Pre-Ventas</p>
+                    <h1 className="text-4xl font-black text-slate-900 tracking-tight">Gestión de <span className="text-blue-600">Cotizaciones</span></h1>
+                </div>
+                <div className="bg-white px-6 py-3 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                    <div className="text-right">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Tasa para conversión</p>
+                        <p className="text-lg font-black text-blue-600">Bs. {bcvRate.toFixed(2)}</p>
+                    </div>
+                </div>
+            </header>
 
-            <div className="overflow-x-auto rounded-2xl border border-gray-800 shadow-2xl">
-                <table className="w-full text-left">
-                    <thead className="bg-gray-900 text-gray-400 text-xs uppercase font-black">
-                        <tr>
-                            <th className="p-4">ID</th>
-                            <th className="p-4">Fecha</th>
-                            <th className="p-4">Items</th>
-                            <th className="p-4">Total USD</th>
-                            <th className="p-4">Estatus</th>
-                            <th className="p-4 text-right">Acciones</th>
+            <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
+                <table className="w-full border-collapse">
+                    <thead>
+                        <tr className="bg-gray-50">
+                            <th className="p-6 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Cotización</th>
+                            <th className="p-6 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Cliente</th>
+                            <th className="p-6 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">Items</th>
+                            <th className="p-6 text-right text-[10px] font-black text-gray-400 uppercase tracking-widest">Total USD</th>
+                            <th className="p-6 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">Acciones</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-800">
-                        {quotes.map(quote => (
-                            <tr key={quote._id} className="hover:bg-gray-900/50 transition">
-                                <td className="p-4 font-mono text-orange-400">{quote.quotationId}</td>
-                                <td className="p-4">{new Date(quote.date).toLocaleDateString()}</td>
-                                <td className="p-4">{quote.items.length} productos</td>
-                                <td className="p-4 font-bold">${quote.totalUsd.toFixed(2)}</td>
-                                <td className="p-4">
-                                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${quote.status === 'open' ? 'bg-orange-900/40 text-orange-400' :
-                                            quote.status === 'converted' ? 'bg-green-900/40 text-green-400' :
-                                                'bg-gray-800 text-gray-500'
-                                        }`}>
-                                        {quote.status}
-                                    </span>
+                    <tbody className="divide-y divide-gray-50">
+                        {quotes.map(q => (
+                            <tr key={q._id} className="hover:bg-blue-50/30 transition-colors group">
+                                <td className="p-6">
+                                    <div className="flex items-center gap-4">
+                                        <span className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-xl">📄</span>
+                                        <div>
+                                            <p className="font-black text-slate-800 text-sm uppercase">{q.quotationId}</p>
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{new Date(q.date).toLocaleDateString()}</p>
+                                        </div>
+                                    </div>
                                 </td>
-                                <td className="p-4 text-right">
-                                    {quote.status === 'open' && (
-                                        <button
-                                            onClick={() => convertToSale(quote._id)}
-                                            className="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-xs font-black uppercase transition transform active:scale-95"
-                                        >
-                                            ✓ Convertir a Venta
-                                        </button>
-                                    )}
+                                <td className="p-6">
+                                    <p className="font-bold text-slate-800 text-sm uppercase">{q.customerId?.name || 'Cliente General'}</p>
+                                    <p className="text-[10px] font-bold text-gray-400">{q.customerId?.idNumber || 'Sin ID'}</p>
+                                </td>
+                                <td className="p-6 text-center">
+                                    <span className="px-3 py-1 bg-gray-100 rounded-full text-[10px] font-black text-slate-600">{q.items?.length || 0} PROD</span>
+                                </td>
+                                <td className="p-6 text-right">
+                                    <p className="font-black text-slate-800 text-lg">${q.totalUsd?.toFixed(2)}</p>
+                                    <p className="text-[10px] font-bold text-blue-600">Bs. {(q.totalUsd * 1.15 * bcvRate).toLocaleString('es-VE')}</p>
+                                </td>
+                                <td className="p-6">
+                                    <div className="flex justify-center gap-2">
+                                        {q.status === 'open' ? (
+                                            <button
+                                                onClick={() => convertToSale(q)}
+                                                className="px-6 py-2 bg-emerald-600 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-emerald-700 transition shadow-lg shadow-emerald-100"
+                                            >
+                                                ⚡ Facturar
+                                            </button>
+                                        ) : (
+                                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">CONVERTIDA</span>
+                                        )}
+                                    </div>
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
+                {quotes.length === 0 && (
+                    <div className="text-center py-20 opacity-20">
+                        <span className="text-8xl mb-4 block">📑</span>
+                        <p className="font-black uppercase tracking-widest text-sm">No hay cotizaciones pendientes</p>
+                    </div>
+                )}
             </div>
         </div>
     );

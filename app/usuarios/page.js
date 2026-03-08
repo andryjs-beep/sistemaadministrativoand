@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 
 export default function UsuariosPage() {
     const [users, setUsers] = useState([]);
-    const [form, setForm] = useState({ username: '', password: '', role: 'vendedor', permissions: { canEditInventory: false, canCreateSales: true, canViewReports: true } });
+    const [form, setForm] = useState({ username: '', password: '', role: 'vendedor' });
 
     useEffect(() => {
         fetchUsers();
@@ -13,90 +13,102 @@ export default function UsuariosPage() {
     const fetchUsers = async () => {
         const res = await fetch('/api/users');
         const data = await res.json();
-        setUsers(data);
+        setUsers(Array.isArray(data) ? data : []);
     };
 
-    const handleSave = async (e) => {
+    const handleCreate = async (e) => {
         e.preventDefault();
         const res = await fetch('/api/users', {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(form)
         });
+
         if (res.ok) {
-            alert('Usuario creado');
+            setForm({ username: '', password: '', role: 'vendedor' });
             fetchUsers();
-            setForm({ username: '', password: '', role: 'vendedor', permissions: { canEditInventory: false, canCreateSales: true, canViewReports: true } });
+            alert('Usuario creado');
+        } else {
+            const err = await res.json();
+            alert(`Error: ${err.error}`);
         }
     };
 
-    const togglePermission = (id, perm) => {
-        const user = users.find(u => u._id === id);
-        const newPerms = { ...user.permissions, [perm]: !user.permissions[perm] };
-
-        fetch('/api/users', {
-            method: 'PUT',
-            body: JSON.stringify({ id, permissions: newPerms })
-        }).then(() => fetchUsers());
+    const deleteUser = async (id) => {
+        if (!confirm('¿Eliminar usuario?')) return;
+        const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' });
+        if (res.ok) fetchUsers();
     };
 
     return (
-        <div className="min-h-screen bg-gray-950 text-white p-8 flex flex-col items-center">
-            <div className="max-w-4xl w-full">
-                <h1 className="text-4xl font-black mb-12 bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-orange-500 uppercase tracking-tighter text-center">
-                    Control de Accesos y Usuarios
-                </h1>
+        <div className="p-10 bg-gray-50 min-h-full font-sans">
+            <header className="mb-10">
+                <p className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] mb-2">Seguridad y Accesos</p>
+                <h1 className="text-4xl font-black text-slate-900 tracking-tight">Gestión de <span className="text-blue-600">Usuarios</span></h1>
+            </header>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {/* Nuevo Usuario */}
-                    <div className="bg-gray-900 p-8 rounded-3xl border border-gray-800 shadow-2xl">
-                        <h2 className="text-xl font-bold mb-6 italic text-gray-400">Registrar Nuevo Personal</h2>
-                        <form onSubmit={handleSave} className="space-y-4">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
+                <div className="xl:col-span-1">
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+                        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight mb-6">Nuevo Operador</h3>
+                        <form onSubmit={handleCreate} className="space-y-4">
                             <input
-                                placeholder="Nombre de Usuario"
-                                className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl focus:border-red-500 outline-none"
+                                placeholder="Usuario" required
+                                className="w-full p-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm"
                                 value={form.username} onChange={e => setForm({ ...form, username: e.target.value })}
                             />
                             <input
-                                placeholder="Password" type="password"
-                                className="w-full p-4 bg-gray-800 border border-gray-700 rounded-xl focus:border-red-500 outline-none"
+                                type="password" placeholder="Contraseña" required
+                                className="w-full p-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm"
                                 value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
                             />
-                            <button className="w-full py-4 bg-red-600 hover:bg-red-500 rounded-2xl font-black uppercase transition shadow-lg shadow-red-900/20">
-                                Crear Usuario
+                            <select
+                                className="w-full p-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm"
+                                value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}
+                            >
+                                <option value="vendedor">Vendedor</option>
+                                <option value="admin">Administrador</option>
+                            </select>
+                            <button className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl hover:bg-blue-700 transition transform active:scale-95 uppercase tracking-widest">
+                                Crear Cuenta 👤
                             </button>
                         </form>
                     </div>
+                </div>
 
-                    {/* Lista de Usuarios */}
-                    <div className="space-y-4">
-                        {users.map(u => (
-                            <div key={u._id} className="bg-gray-900 p-6 rounded-3xl border border-gray-800 flex flex-col gap-4">
-                                <div className="flex justify-between items-center">
-                                    <span className="font-black text-lg text-gray-200 uppercase">{u.username}</span>
-                                    <span className="px-3 py-1 bg-gray-800 text-gray-500 rounded-full text-xs font-bold uppercase">{u.role}</span>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => togglePermission(u._id, 'canEditInventory')}
-                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition ${u.permissions.canEditInventory ? 'bg-blue-600' : 'bg-gray-800 text-gray-600'}`}
-                                    >
-                                        📦 Stock
-                                    </button>
-                                    <button
-                                        onClick={() => togglePermission(u._id, 'canCreateSales')}
-                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition ${u.permissions.canCreateSales ? 'bg-green-600' : 'bg-gray-800 text-gray-600'}`}
-                                    >
-                                        💰 Ventas
-                                    </button>
-                                    <button
-                                        onClick={() => togglePermission(u._id, 'canViewReports')}
-                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition ${u.permissions.canViewReports ? 'bg-purple-600' : 'bg-gray-800 text-gray-600'}`}
-                                    >
-                                        📊 Reportes
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                <div className="xl:col-span-2">
+                    <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
+                        <table className="w-full border-collapse">
+                            <thead>
+                                <tr className="bg-gray-50">
+                                    <th className="p-6 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Usuario</th>
+                                    <th className="p-6 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">Rol</th>
+                                    <th className="p-6 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {users.map(u => (
+                                    <tr key={u._id} className="hover:bg-blue-50/30 transition-colors group">
+                                        <td className="p-6">
+                                            <div className="flex items-center gap-4">
+                                                <span className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-xl">🛡️</span>
+                                                <p className="font-black text-slate-800 text-sm uppercase">{u.username}</p>
+                                            </div>
+                                        </td>
+                                        <td className="p-6 text-center">
+                                            <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase ${u.role === 'admin' ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-600'}`}>
+                                                {u.role}
+                                            </span>
+                                        </td>
+                                        <td className="p-6 text-center">
+                                            {u.username !== 'admin' && (
+                                                <button onClick={() => deleteUser(u._id)} className="p-3 text-red-300 hover:text-red-600 transition">🗑️</button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>

@@ -4,74 +4,136 @@ import { useState, useEffect } from 'react';
 
 export default function InventarioPage() {
     const [products, setProducts] = useState([]);
-    const [user, setUser] = useState(null);
+    const [adjustment, setAdjustment] = useState({ productId: '', quantity: '', type: 'add', reason: '' });
 
     useEffect(() => {
         fetchProducts();
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) setUser(JSON.parse(storedUser));
     }, []);
 
     const fetchProducts = async () => {
         const res = await fetch('/api/products');
         const data = await res.json();
-        setProducts(data);
+        setProducts(Array.isArray(data) ? data : []);
     };
 
-    const handleAdjust = async (id, currentStock) => {
-        const newValue = prompt('Nuevo stock total:', currentStock);
-        if (newValue === null) return;
-
-        const adjustment = parseInt(newValue) - currentStock;
+    const handleAdjustment = async (e) => {
+        e.preventDefault();
+        if (!adjustment.productId || !adjustment.quantity) return alert('Campos incompletos');
 
         const res = await fetch('/api/inventory', {
             method: 'POST',
-            body: JSON.stringify({ productId: id, adjustment })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                productId: adjustment.productId,
+                quantity: parseInt(adjustment.quantity),
+                type: adjustment.type,
+                reason: adjustment.reason
+            })
         });
 
         if (res.ok) {
-            alert('Inventario actualizado');
+            setAdjustment({ productId: '', quantity: '', type: 'add', reason: '' });
             fetchProducts();
+            alert('Inventario actualizado');
         } else {
-            alert('Error: Posible falta de permisos');
+            const err = await res.json();
+            alert(`Error: ${err.error}`);
         }
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 p-8 font-sans">
-            <h1 className="text-3xl font-black text-gray-900 mb-8 uppercase tracking-tighter">Control de Inventario</h1>
+        <div className="p-10 bg-gray-50 min-h-full font-sans">
+            <header className="mb-10">
+                <p className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] mb-2">Control Logístico</p>
+                <h1 className="text-4xl font-black text-slate-900 tracking-tight">Gestión de <span className="text-blue-600">Inventario</span></h1>
+            </header>
 
-            <div className="grid grid-cols-1 gap-4">
-                {products.map(product => (
-                    <div key={product._id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex justify-between items-center hover:shadow-md transition">
-                        <div className="flex items-center gap-6">
-                            <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center text-2xl">
-                                {product.imageUrl ? <img src={product.imageUrl} className="w-full h-full object-cover rounded-lg" /> : '📦'}
-                            </div>
-                            <div>
-                                <h2 className="font-bold text-lg text-gray-800">{product.name}</h2>
-                                <p className="text-sm text-gray-400">Código: {product.code}</p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-12">
-                            <div className="text-center">
-                                <p className="text-xs font-black text-gray-400 uppercase">Stock Actual</p>
-                                <p className={`text-2xl font-black ${product.stock <= product.minStock ? 'text-red-500' : 'text-blue-600'}`}>
-                                    {product.stock}
-                                </p>
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
+                {/* Lado Izquierdo: Formulario de Ajuste */}
+                <div className="xl:col-span-1">
+                    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 sticky top-10">
+                        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight mb-6">Ajuste Manual de Stock</h3>
+                        <form onSubmit={handleAdjustment} className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-2">Seleccionar Producto</label>
+                                <select
+                                    className="w-full p-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm"
+                                    value={adjustment.productId} onChange={e => setAdjustment({ ...adjustment, productId: e.target.value })}
+                                >
+                                    <option value="">-- Buscar Producto --</option>
+                                    {products.map(p => <option key={p._id} value={p._id}>{p.name} ({p.code}) - Stock: {p.stock}</option>)}
+                                </select>
                             </div>
 
-                            <button
-                                onClick={() => handleAdjust(product._id, product.stock)}
-                                className="bg-gray-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-gray-800 transition active:scale-95 flex items-center gap-2"
-                            >
-                                ⚙️ Ajustar
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-2">Cantidad</label>
+                                    <input
+                                        type="number" placeholder="0"
+                                        className="w-full p-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm"
+                                        value={adjustment.quantity} onChange={e => setAdjustment({ ...adjustment, quantity: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-2">Operación</label>
+                                    <select
+                                        className="w-full p-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm"
+                                        value={adjustment.type} onChange={e => setAdjustment({ ...adjustment, type: e.target.value })}
+                                    >
+                                        <option value="add">➕ Ingreso</option>
+                                        <option value="subtract">➖ Egreso</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-2">Motivo / Observación</label>
+                                <textarea
+                                    placeholder="Ej. Compra a proveedor, Ajuste por merma, etc."
+                                    className="w-full p-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm h-32 resize-none"
+                                    value={adjustment.reason} onChange={e => setAdjustment({ ...adjustment, reason: e.target.value })}
+                                />
+                            </div>
+
+                            <button className="w-full py-5 bg-slate-900 text-white font-black rounded-2xl shadow-xl hover:bg-black transition-all transform active:scale-95 uppercase tracking-widest">
+                                Confirmar Movimiento ⚡
                             </button>
-                        </div>
+                        </form>
                     </div>
-                ))}
+                </div>
+
+                {/* Lado Derecho: Visualización de Stock */}
+                <div className="xl:col-span-2">
+                    <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 p-8">
+                        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight mb-8">Niveles de Existencia</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {products.map(p => (
+                                <div key={p._id} className="p-6 bg-gray-50 rounded-3xl border border-gray-100 flex items-center justify-between group hover:bg-white hover:shadow-xl transition-all">
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl shadow-sm ${p.stock <= p.minStock ? 'bg-red-100 text-red-600' : 'bg-white text-emerald-600'}`}>
+                                            {p.stock <= p.minStock ? '⚠️' : '✅'}
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-slate-800 text-sm uppercase">{p.name}</p>
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{p.code}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className={`text-2xl font-black ${p.stock <= p.minStock ? 'text-red-600' : 'text-slate-800'}`}>{p.stock}</p>
+                                        <p className="text-[10px] font-black text-gray-400 uppercase">Unidades</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        {products.length === 0 && (
+                            <div className="text-center py-20 opacity-30">
+                                <span className="text-8xl mb-4 block">📦</span>
+                                <p className="font-bold uppercase tracking-widest text-xs">Sin productos en inventario</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
         </div>
-    );
+    )
 }

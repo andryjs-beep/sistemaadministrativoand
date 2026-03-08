@@ -1,6 +1,7 @@
 import dbConnect from '@/lib/db';
 import { Sale, Product, ExchangeRate, Quotation } from '@/lib/models';
 import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,12 +12,12 @@ export async function POST(req) {
 
     try {
         const body = await req.json();
-        const { items, paymentMethod, accountNumber, quotationId } = body;
+        const { items, paymentMethod, accountNumber, quotationId, customerId } = body;
 
-        // Obtener tasa BCV más reciente
+        // Senior Logic: Obtener la tasa más reciente o usar fallback robusto
         const latestRate = await ExchangeRate.findOne().sort({ createdAt: -1 });
         const bcvRate = latestRate ? latestRate.value : 36.5;
-        const PERCENTAGE_EXTRA = 0.15; // 15% extra como en los requisitos
+        const PERCENTAGE_EXTRA = 0.15; // Comisión por brecha cambiaria
 
         let totalUsd = 0;
         let totalBs = 0;
@@ -25,11 +26,11 @@ export async function POST(req) {
 
         for (const item of items) {
             const product = await Product.findById(item.productId).session(session);
-            if (!product || product.stock < item.quantity) {
-                throw new Error(`Stock insuficiente para ${product?.name || 'producto'}`);
+            if (!product) throw new Error(`Producto ${item.productId} no encontrado`);
+            if (product.stock < item.quantity) {
+                throw new Error(`Stock insuficiente para ${product.name}. Disponible: ${product.stock}`);
             }
 
-            // Cálculo de precios
             const priceUsd = product.priceUsd;
             const priceBs = priceUsd * (1 + PERCENTAGE_EXTRA) * bcvRate;
 
@@ -48,13 +49,15 @@ export async function POST(req) {
                 subtotalBs
             });
 
-            // Restar stock
+            // Actualización atómica de stock
             product.stock -= item.quantity;
             await product.save({ session });
         }
 
+        const saleId = `VEN-${Date.now()}`;
         const newSale = await Sale.create([{
-            saleId: `SALE-${Date.now()}`,
+            saleId,
+            customerId: customerId || null,
             items: saleItems,
             totalUsd,
             totalBs,
@@ -64,7 +67,6 @@ export async function POST(req) {
             status: 'completed'
         }], { session });
 
-        // Si viene de una cotización, marcarla como convertida
         if (quotationId) {
             await Quotation.findByIdAndUpdate(quotationId, {
                 status: 'converted',
@@ -76,6 +78,7 @@ export async function POST(req) {
         return NextResponse.json(newSale[0], { status: 201 });
     } catch (error) {
         await session.abortTransaction();
+        console.error('Sale Transaction Error:', error);
         return NextResponse.json({ error: error.message }, { status: 400 });
     } finally {
         session.endSession();
@@ -85,7 +88,10 @@ export async function POST(req) {
 export async function GET() {
     await dbConnect();
     try {
-        const sales = await Sale.find({}).populate('items.productId').sort({ createdAt: -1 });
+        const sales = await Sale.find({})
+            .populate('items.productId')
+            .populate('customerId')
+            .sort({ createdAt: -1 });
         return NextResponse.json(sales);
     } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
