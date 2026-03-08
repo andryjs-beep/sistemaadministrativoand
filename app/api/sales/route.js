@@ -16,9 +16,10 @@ export async function POST(req) {
             return NextResponse.json({ error: 'Debes abrir la caja antes de procesar ventas' }, { status: 400 });
         }
 
-        // 2. Obtener tasa BCV
-        const bcvDoc = await ExchangeRate.findOne({ type: 'USD' }).sort({ date: -1 });
-        const bcvRate = bcvDoc?.value || 36.5;
+        // 2. Obtener tasa BCV (Prioridad Euro según usuario)
+        const bcvEur = await ExchangeRate.findOne({ type: 'EUR' }).sort({ date: -1 });
+        const bcvUsd = await ExchangeRate.findOne({ type: 'USD' }).sort({ date: -1 });
+        const bcvRate = bcvEur?.value || bcvUsd?.value || 36.5;
 
         // 3. Procesar items y actualizar stock + calcular costos/ganancias
         let totalUsd = 0;
@@ -38,8 +39,8 @@ export async function POST(req) {
                 isWholesale = true;
             }
 
-            // Aplicar descuento manual si existe (debería venir del frontend)
-            const discountPercent = item.discountPercent || 0;
+            // Aplicar descuento manual
+            const discountPercent = parseFloat(item.discountPercent) || 0;
             if (discountPercent > 0) {
                 unitPrice = unitPrice * (1 - (discountPercent / 100));
             }
