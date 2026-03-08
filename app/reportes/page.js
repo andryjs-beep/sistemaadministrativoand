@@ -125,26 +125,37 @@ export default function ReportesPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                 {/* Payment Stats */}
                 <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm">
-                    <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest mb-8 border-b pb-4">Desglose de Caja</h3>
+                    <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest mb-8 border-b pb-4">Desglose de Caja por Cuenta</h3>
                     <div className="space-y-6">
                         {Object.entries(payBreak).map(([method, info]) => (
                             <div key={method} className="flex items-center gap-6">
-                                <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-xl shadow-inner">💰</div>
+                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-inner ${info.currency === 'BS' ? 'bg-orange-50 text-orange-500' : 'bg-emerald-50 text-emerald-500'}`}>
+                                    {info.currency === 'BS' ? '🇻🇪' : '💵'}
+                                </div>
                                 <div className="flex-1">
                                     <div className="flex justify-between items-baseline mb-2">
-                                        <span className="text-sm font-black text-slate-700 uppercase">{method}</span>
-                                        <span className="text-xs font-black text-blue-600">${info.totalUsd.toFixed(2)}</span>
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-black text-slate-700 uppercase">{method}</span>
+                                            <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{info.count} ventas</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className={`text-lg font-black ${info.currency === 'BS' ? 'text-orange-500' : 'text-emerald-600'}`}>
+                                                {info.currency === 'BS' ? 'Bs. ' : '$'}
+                                                {info.mainTotal.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                            <p className="text-[8px] font-black text-gray-300 uppercase">Total en {info.currency}</p>
+                                        </div>
                                     </div>
-                                    <div className="h-3 bg-gray-100 rounded-full overflow-hidden p-0.5">
-                                        <div className="h-full bg-blue-600 rounded-full transition-all duration-1000" style={{ width: `${s.totalSalesUsd ? (info.totalUsd / s.totalSalesUsd) * 100 : 0}%` }}></div>
-                                    </div>
-                                    <div className="flex justify-between mt-2">
-                                        <span className="text-[9px] font-black text-gray-400 uppercase">{info.count} Operaciones</span>
-                                        <span className="text-[9px] font-black text-emerald-600 uppercase">Bs. {info.totalBs.toLocaleString('es-VE')}</span>
+                                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                        <div className={`h-full rounded-full transition-all duration-1000 ${info.currency === 'BS' ? 'bg-orange-500' : 'bg-emerald-500'}`}
+                                            style={{ width: `${s.totalSalesUsd ? (info.totalUsd / s.totalSalesUsd) * 100 : 0}%` }}></div>
                                     </div>
                                 </div>
                             </div>
                         ))}
+                        {Object.keys(payBreak).length === 0 && (
+                            <div className="py-20 text-center opacity-30 italic text-xs font-bold uppercase tracking-widest">No hay ventas registradas</div>
+                        )}
                     </div>
                 </div>
 

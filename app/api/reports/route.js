@@ -35,7 +35,7 @@ export async function GET(req) {
             expenseQuery = { date: { $gte: from, $lte: to } };
         }
 
-        const [sales, expenses, cashSessions] = await Promise.all([
+        const [sales, expenses, cashSessions, allPaymentMethods] = await Promise.all([
             Sale.find({ ...saleQuery, status: 'completed' })
                 .populate('items.productId', 'name code costUsd')
                 .sort({ date: -1 }),
@@ -43,6 +43,7 @@ export async function GET(req) {
                 .populate('providerId', 'name rif')
                 .sort({ date: -1 }),
             CashSession.find({}).sort({ openedAt: -1 }).limit(20),
+            PaymentMethod.find({}),
         ]);
 
         // Aggregate totals
@@ -51,7 +52,7 @@ export async function GET(req) {
         const totalExpensesUsd = expenses.reduce((sum, e) => sum + (e.amountUsd || 0), 0);
         const totalExpensesBs = expenses.reduce((sum, e) => sum + (e.amountBs || 0), 0);
 
-        // Profit calculations (revenue - cost of goods sold)
+        // ... (Profit calculations remain the same) ...
         let totalCostOfGoods = 0;
         let totalProfit = 0;
         let wholesaleSalesCount = 0;
@@ -73,14 +74,32 @@ export async function GET(req) {
         const netBs = totalSalesBs - totalExpensesBs;
         const grossMarginPct = totalSalesUsd > 0 ? ((totalProfit / totalSalesUsd) * 100).toFixed(1) : 0;
 
-        // Payment method breakdown
+        // Payment method breakdown with currency awareness
         const paymentBreakdown = {};
         sales.forEach(s => {
-            const method = s.paymentMethod || 'Otro';
-            if (!paymentBreakdown[method]) paymentBreakdown[method] = { count: 0, totalUsd: 0, totalBs: 0 };
-            paymentBreakdown[method].count++;
-            paymentBreakdown[method].totalUsd += s.totalUsd || 0;
-            paymentBreakdown[method].totalBs += s.totalBs || 0;
+            const methodName = s.paymentMethod || 'Otro';
+            const methodConfig = allPaymentMethods.find(m => m.name === methodName);
+            const currency = methodConfig?.currency || 'USD'; // default to USD if unknown
+
+            if (!paymentBreakdown[methodName]) {
+                paymentBreakdown[methodName] = {
+                    count: 0,
+                    totalUsd: 0,
+                    totalBs: 0,
+                    currency,
+                    mainTotal: 0 // This will be in the method's currency
+                };
+            }
+            paymentBreakdown[methodName].count++;
+            paymentBreakdown[methodName].totalUsd += s.totalUsd || 0;
+            paymentBreakdown[methodName].totalBs += s.totalBs || 0;
+
+            // Increment the sum in the specific currency of the method
+            if (currency === 'BS') {
+                paymentBreakdown[methodName].mainTotal += s.totalBs || 0;
+            } else {
+                paymentBreakdown[methodName].mainTotal += s.totalUsd || 0;
+            }
         });
 
         // Top products

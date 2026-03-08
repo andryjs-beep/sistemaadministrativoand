@@ -2,9 +2,15 @@
 
 import { useState, useEffect } from 'react';
 
+const CURRENCIES = [
+    { value: 'USD', label: '💵 Dólar (USD)', color: 'text-emerald-600' },
+    { value: 'BS', label: '🇻🇪 Bolívar (BS)', color: 'text-orange-500' },
+    { value: 'EUR', label: '💶 Euro (EUR)', color: 'text-blue-600' },
+];
+
 export default function MetodosPagoPage() {
     const [methods, setMethods] = useState([]);
-    const [form, setForm] = useState({ name: '', accountNumber: '', active: true });
+    const [form, setForm] = useState({ name: '', accountNumber: '', currency: 'USD', active: true });
     const [loading, setLoading] = useState(false);
     const [editing, setEditing] = useState(null);
 
@@ -30,7 +36,7 @@ export default function MetodosPagoPage() {
                 body: JSON.stringify(body)
             });
             if (res.ok) {
-                setForm({ name: '', accountNumber: '', active: true });
+                setForm({ name: '', accountNumber: '', currency: 'USD', active: true });
                 setEditing(null);
                 fetchMethods();
                 alert('Método de pago guardado');
@@ -51,7 +57,7 @@ export default function MetodosPagoPage() {
         <div className="p-4 md:p-10 bg-gray-50 min-h-full font-sans text-slate-900">
             <header className="mb-8">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] mb-1">Configuración</p>
-                <h1 className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight">Métodos de <span className="text-blue-600 italic">Pago</span></h1>
+                <h1 className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight">Cuentas & <span className="text-blue-600 italic">Monedas</span></h1>
             </header>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -61,7 +67,7 @@ export default function MetodosPagoPage() {
                         <h3 className="text-xl font-black text-slate-800 uppercase mb-6 tracking-tighter">
                             {editing ? 'Editar Método' : 'Nuevo Método'}
                         </h3>
-                        <form onSubmit={handleSubmit} className="space-y-4">
+                        <form onSubmit={handleSubmit} className="space-y-5">
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-3">Nombre del Método</label>
                                 <input
@@ -71,6 +77,18 @@ export default function MetodosPagoPage() {
                                     value={form.name}
                                     onChange={e => setForm({ ...form, name: e.target.value })}
                                 />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-3">Moneda del Pago</label>
+                                <select
+                                    className="w-full p-4 rounded-2xl bg-gray-50 border-none outline-none font-bold text-slate-800 text-sm focus:ring-2 focus:ring-blue-500 transition"
+                                    value={form.currency}
+                                    onChange={e => setForm({ ...form, currency: e.target.value })}
+                                >
+                                    {CURRENCIES.map(curr => (
+                                        <option key={curr.value} value={curr.value}>{curr.label}</option>
+                                    ))}
+                                </select>
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-3">Detalle / N° de Cuenta</label>
@@ -85,12 +103,12 @@ export default function MetodosPagoPage() {
                                 disabled={loading}
                                 className="w-full py-5 bg-blue-600 text-white font-black rounded-3xl hover:bg-blue-700 transition transform active:scale-95 shadow-xl shadow-blue-100 mt-4 text-[10px] tracking-widest uppercase"
                             >
-                                {loading ? 'GUARDANDO...' : editing ? 'ACTUALIZAR' : 'REGISTRAR MÉTODO 💳'}
+                                {loading ? 'PROCESANDO...' : editing ? 'ACTUALIZAR' : 'REGISTRAR MÉTODO 💳'}
                             </button>
                             {editing && (
                                 <button
                                     type="button"
-                                    onClick={() => { setEditing(null); setForm({ name: '', accountNumber: '', active: true }); }}
+                                    onClick={() => { setEditing(null); setForm({ name: '', accountNumber: '', currency: 'USD', active: true }); }}
                                     className="w-full py-2 text-gray-400 font-bold text-[10px] uppercase tracking-widest hover:text-slate-800"
                                 >
                                     Cancelar
@@ -107,16 +125,19 @@ export default function MetodosPagoPage() {
                     </div>
                     {methods.map(m => (
                         <div key={m._id} className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm flex items-center gap-6 hover:shadow-xl transition-all group">
-                            <div className="w-14 h-14 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center text-2xl shadow-inner shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-all duration-500">
-                                💳
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-inner shrink-0 transition-all duration-500 ${m.currency === 'BS' ? 'bg-orange-50 text-orange-500 group-hover:bg-orange-500 group-hover:text-white' : 'bg-emerald-50 text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white'}`}>
+                                {m.currency === 'BS' ? '🇻🇪' : '💵'}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="font-black text-slate-800 text-lg uppercase tracking-tight">{m.name}</p>
-                                <p className="text-[10px] font-black text-blue-500 uppercase tracking-[0.2em]">{m.accountNumber || 'SIN DETALLES'}</p>
+                                <div className="flex items-center gap-2">
+                                    <p className="font-black text-slate-800 text-lg uppercase tracking-tight">{m.name}</p>
+                                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-full border ${m.currency === 'BS' ? 'border-orange-200 text-orange-500' : 'border-emerald-200 text-emerald-500'}`}>{m.currency}</span>
+                                </div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{m.accountNumber || 'SIN DETALLES'}</p>
                             </div>
                             <div className="flex gap-2 shrink-0 border-l border-gray-50 pl-6">
                                 <button
-                                    onClick={() => { setForm({ name: m.name, accountNumber: m.accountNumber || '', active: m.active }); setEditing(m._id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                                    onClick={() => { setForm({ name: m.name, accountNumber: m.accountNumber || '', currency: m.currency || 'USD', active: m.active }); setEditing(m._id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                                     className="p-4 bg-gray-50 text-slate-400 rounded-2xl hover:bg-blue-600 hover:text-white transition"
                                 >
                                     ✏️
