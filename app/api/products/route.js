@@ -18,10 +18,12 @@ export async function POST(req) {
     await dbConnect();
     try {
         const body = await req.json();
-        // Cast numbers to avoid string validation errors
         const productData = {
             ...body,
             priceUsd: parseFloat(body.priceUsd) || 0,
+            costUsd: parseFloat(body.costUsd) || 0,
+            wholesalePriceUsd: parseFloat(body.wholesalePriceUsd) || 0,
+            minWholesaleQty: parseInt(body.minWholesaleQty) || 6,
             stock: parseInt(body.stock) || 0,
             minStock: parseInt(body.minStock) || 5,
         };
@@ -42,6 +44,9 @@ export async function PUT(req) {
         const data = {
             ...updateData,
             priceUsd: parseFloat(updateData.priceUsd) || 0,
+            costUsd: parseFloat(updateData.costUsd) || 0,
+            wholesalePriceUsd: parseFloat(updateData.wholesalePriceUsd) || 0,
+            minWholesaleQty: parseInt(updateData.minWholesaleQty) || 6,
             stock: parseInt(updateData.stock) || 0,
             minStock: parseInt(updateData.minStock) || 5,
         };
