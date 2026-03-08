@@ -1,74 +1,99 @@
 "use client";
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+const NAV_ITEMS = [
+    { href: '/dashboard', icon: '🏠', label: 'Dashboard' },
+    { href: '/pos', icon: '🛒', label: 'POS (Ventas)' },
+    { href: '/caja', icon: '💰', label: 'Caja' },
+    { href: '/inventario', icon: '📦', label: 'Inventario' },
+    { href: '/productos', icon: '🏷️', label: 'Productos' },
+    { href: '/bodegas', icon: '🏭', label: 'Bodegas' },
+    { href: '/clientes', icon: '👥', label: 'Clientes' },
+    { href: '/proveedores', icon: '💸', label: 'Proveedores' },
+    { href: '/cotizaciones', icon: '📋', label: 'Cotizaciones' },
+    { href: '/reportes', icon: '📊', label: 'Reportes' },
+    { href: '/usuarios', icon: '🛡️', label: 'Usuarios' },
+];
 
 export default function Sidebar() {
-    const pathname = usePathname();
     const [isOpen, setIsOpen] = useState(false);
-    const isLoginPage = pathname === '/login' || pathname === '/';
+    const [pathname, setPathname] = useState('');
 
-    if (isLoginPage) return null;
+    useEffect(() => {
+        setPathname(window.location.pathname);
+    }, []);
 
-    const menu = [
-        { label: 'Dashboard', icon: '🏠', href: '/dashboard' },
-        { label: 'POS (Ventas)', icon: '🛒', href: '/pos' },
-        { label: 'Inventario', icon: '📦', href: '/inventario' },
-        { label: 'Productos', icon: '🏷️', href: '/productos' },
-        { label: 'Clientes', icon: '👥', href: '/clientes' },
-        { label: 'Cotizaciones', icon: '📄', href: '/cotizaciones' },
-        { label: 'Usuarios', icon: '👤', href: '/usuarios' },
-    ];
+    // Hide on login page
+    if (pathname === '/login') return null;
 
     return (
         <>
-            {/* Mobile Toggle Button */}
+            {/* Mobile toggle */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="lg:hidden fixed top-4 right-4 z-[60] bg-blue-600 text-white p-3 rounded-2xl shadow-xl active:scale-90 transition-transform"
+                className="lg:hidden fixed top-4 left-4 z-50 w-11 h-11 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-xl text-xl"
             >
                 {isOpen ? '✕' : '☰'}
             </button>
 
-            {/* Sidebar Overlay */}
+            {/* Overlay (mobile) */}
             {isOpen && (
                 <div
+                    className="lg:hidden fixed inset-0 bg-black/50 z-30 backdrop-blur-sm"
                     onClick={() => setIsOpen(false)}
-                    className="lg:hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[55]"
-                ></div>
+                />
             )}
 
+            {/* Sidebar */}
             <aside className={`
-        w-64 bg-slate-900 h-screen sticky top-0 flex flex-col p-6 shadow-2xl z-[58] shrink-0
-        fixed lg:sticky lg:translate-x-0 transition-transform duration-300
-        ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
-                <div className="mb-12">
-                    <h1 className="text-2xl font-black text-white italic tracking-tighter uppercase">
-                        SIS<span className="text-blue-500 text-3xl">.</span>ADMI
-                    </h1>
+                fixed lg:sticky top-0 left-0 h-screen z-40
+                w-64 bg-slate-950 flex flex-col
+                transition-transform duration-300 ease-in-out
+                ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+            `}>
+                {/* Logo */}
+                <div className="p-6 border-b border-white/5 shrink-0">
+                    <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-sm font-black text-white shadow-lg">SA</div>
+                        <div>
+                            <p className="font-black text-white text-sm tracking-tight">SIS.ADMI</p>
+                            <p className="text-[9px] font-bold text-gray-500 uppercase tracking-[0.2em]">Sistema Administrativo</p>
+                        </div>
+                    </div>
                 </div>
 
-                <nav className="flex-1 space-y-1 overflow-y-auto custom-scrollbar">
-                    {menu.map((item) => (
-                        <Link key={item.label} href={item.href} onClick={() => setIsOpen(false)}>
-                            <div className={`p-4 rounded-xl flex items-center gap-4 transition-all group ${pathname === item.href ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                                }`}>
-                                <span className="text-xl group-hover:scale-125 transition-transform">{item.icon}</span>
-                                <span className="font-bold text-sm uppercase tracking-wide">{item.label}</span>
-                            </div>
-                        </Link>
-                    ))}
+                {/* Nav */}
+                <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
+                    {NAV_ITEMS.map(({ href, icon, label }) => {
+                        const active = pathname === href || pathname.startsWith(href + '/');
+                        return (
+                            <a
+                                key={href}
+                                href={href}
+                                onClick={() => setIsOpen(false)}
+                                className={`
+                                    flex items-center gap-3 px-4 py-3 rounded-2xl transition-all group
+                                    ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-gray-400 hover:bg-white/5 hover:text-white'}
+                                `}
+                            >
+                                <span className="text-base">{icon}</span>
+                                <span className="font-bold text-sm uppercase tracking-wide">{label}</span>
+                                {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/60"></span>}
+                            </a>
+                        );
+                    })}
                 </nav>
 
-                <div className="mt-auto pt-6 border-t border-slate-800">
-                    <Link href="/login" onClick={() => localStorage.clear()}>
-                        <div className="p-4 rounded-xl text-red-400 hover:bg-red-500/10 flex items-center gap-4 transition-all">
-                            <span>🚪</span>
-                            <span className="font-black text-xs uppercase tracking-widest">Salir</span>
-                        </div>
-                    </Link>
+                {/* Footer */}
+                <div className="p-4 border-t border-white/5 shrink-0">
+                    <a
+                        href="/login"
+                        className="flex items-center gap-3 px-4 py-3 rounded-2xl text-red-400 hover:bg-red-900/20 hover:text-red-300 transition-all"
+                    >
+                        <span className="text-base">🚪</span>
+                        <span className="font-bold text-sm uppercase tracking-wide">Salir</span>
+                    </a>
                 </div>
             </aside>
         </>
