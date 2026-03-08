@@ -2,6 +2,8 @@ import dbConnect from '@/lib/db';
 import { Sale, Product, ExchangeRate, Quotation } from '@/lib/models';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req) {
     await dbConnect();
     const session = await mongoose.startSession();
