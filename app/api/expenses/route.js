@@ -21,11 +21,15 @@ export async function POST(req) {
     await dbConnect();
     try {
         const body = await req.json();
-        // Get current exchange rate
-        const rate = await ExchangeRate.findOne({}).sort({ date: -1 });
-        const exchangeRate = rate?.value || 1;
-
         const amountUsd = parseFloat(body.amountUsd) || 0;
+
+        // Prioridad: Tasa manual enviada desde el frontend > Tasa del sistema (BCV)
+        let exchangeRate = parseFloat(body.exchangeRate);
+        if (!exchangeRate || isNaN(exchangeRate)) {
+            const rateRecord = await ExchangeRate.findOne({}).sort({ date: -1 });
+            exchangeRate = rateRecord?.value || 1;
+        }
+
         const amountBs = amountUsd * exchangeRate;
 
         const expense = await Expense.create({

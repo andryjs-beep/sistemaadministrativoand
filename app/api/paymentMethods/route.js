@@ -24,3 +24,28 @@ export async function POST(req) {
         return NextResponse.json({ error: error.message }, { status: 400 });
     }
 }
+
+export async function PUT(req) {
+    await dbConnect();
+    try {
+        const body = await req.json();
+        const { id, ...updateData } = body;
+        const updated = await PaymentMethod.findByIdAndUpdate(id, updateData, { new: true });
+        return NextResponse.json(updated);
+    } catch (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+}
+
+export async function DELETE(req) {
+    await dbConnect();
+    try {
+        const { searchParams } = new URL(req.url);
+        const id = searchParams.get('id');
+        // Borrado lógico para no afectar ventas históricas
+        await PaymentMethod.findByIdAndUpdate(id, { active: false });
+        return NextResponse.json({ message: 'Método desactivado' });
+    } catch (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+}

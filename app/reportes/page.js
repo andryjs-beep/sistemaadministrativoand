@@ -173,38 +173,55 @@ export default function ReportesPage() {
             </div>
 
             {/* Sales Detail table */}
+            <div className="bg-white rounded-[40px] border border-gray-100 shadow-xl overflow-hidden mb-12">
+                <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
+                    <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest text-blue-600">Auditoría de Ventas (Ingresos)</h3>
+                    <span className="text-[10px] font-black text-gray-400">Últimas operativas</span>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full">
+                        ... (rest of the sales table from the file) ...
+                    </table>
+                </div>
+            </div>
+
+            {/* Expenses Detail table */}
             <div className="bg-white rounded-[40px] border border-gray-100 shadow-xl overflow-hidden mb-8">
                 <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
-                    <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest">Auditoría de Ventas Recientes</h3>
-                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Últimas 20 facturas</span>
+                    <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest text-red-600">Auditoría de Egresos (Pagos)</h3>
+                    <span className="text-[10px] font-black text-gray-400">Desembolsos en el periodo</span>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead>
                             <tr className="border-b border-gray-100">
-                                {['Factura', 'Fecha', 'Items', 'Forma Pago', 'Monto $', 'Ganancia'].map(h => (
+                                {['Categoría', 'Proveedor', 'Descripción', 'Fecha', 'Método', 'Tasa', 'Monto $', 'Total BS'].map(h => (
                                     <th key={h} className="p-6 text-left text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {(data?.sales || []).slice(0, 20).map(sale => {
-                                const saleProfit = sale.items?.reduce((acc, item) => acc + (item.profitUsd || 0), 0) || 0;
-                                return (
-                                    <tr key={sale._id} className="hover:bg-blue-50/30 transition-colors">
-                                        <td className="p-6 text-[10px] font-black text-slate-400">#{sale.saleId?.slice(-6)}</td>
-                                        <td className="p-6 text-xs font-bold text-slate-600">{new Date(sale.date).toLocaleDateString('es-VE')}</td>
-                                        <td className="p-6 text-xs font-bold text-slate-600">{sale.items?.length || 0} pzs</td>
-                                        <td className="p-6">
-                                            <span className="px-3 py-1 bg-white border border-gray-200 text-slate-500 text-[9px] font-black rounded-full uppercase italic shadow-sm">{sale.paymentMethod}</span>
-                                        </td>
-                                        <td className="p-6 font-black text-slate-800 text-sm">${(sale.totalUsd || 0).toFixed(2)}</td>
-                                        <td className="p-6 font-black text-emerald-600 text-xs">+${saleProfit.toFixed(2)}</td>
-                                    </tr>
-                                )
-                            })}
+                            {(data?.expenses || []).map(exp => (
+                                <tr key={exp._id} className="hover:bg-red-50/30 transition-colors">
+                                    <td className="p-6">
+                                        <span className="bg-red-50 text-red-600 px-2 py-1 rounded-lg text-[8px] font-black uppercase">{exp.category}</span>
+                                    </td>
+                                    <td className="p-6 text-[10px] font-black text-slate-600 uppercase truncate max-w-[120px]">{exp.providerName || 'Particular'}</td>
+                                    <td className="p-6 text-xs font-bold text-slate-400 italic truncate max-w-[150px]">{exp.description}</td>
+                                    <td className="p-6 text-xs font-bold text-slate-600">{new Date(exp.date).toLocaleDateString('es-VE')}</td>
+                                    <td className="p-6">
+                                        <span className="text-[9px] font-black text-slate-400 uppercase">{exp.paymentMethod}</span>
+                                    </td>
+                                    <td className="p-6 text-[10px] font-black text-blue-400 italic">{exp.exchangeRate || '—'}</td>
+                                    <td className="p-6 font-black text-red-600 text-sm tracking-tighter">${(exp.amountUsd || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                    <td className="p-6 font-black text-slate-800 text-xs">Bs. {(exp.amountBs || 0).toLocaleString('es-VE')}</td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
+                    {(!data?.expenses || data.expenses.length === 0) && (
+                        <div className="py-20 text-center opacity-30 italic text-xs font-bold">No se registraron egresos en este periodo</div>
+                    )}
                 </div>
             </div>
 

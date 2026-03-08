@@ -11,6 +11,7 @@ const NAV_ITEMS = [
     { href: '/bodegas', icon: '🏭', label: 'Bodegas' },
     { href: '/clientes', icon: '👥', label: 'Clientes' },
     { href: '/proveedores', icon: '💸', label: 'Proveedores' },
+    { href: '/metodos-pago', icon: '💳', label: 'Métodos de Pago' },
     { href: '/cotizaciones', icon: '📋', label: 'Cotizaciones' },
     { href: '/reportes', icon: '📊', label: 'Reportes' },
     { href: '/usuarios', icon: '🛡️', label: 'Usuarios' },
