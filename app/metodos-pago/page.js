@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 
 const CURRENCIES = [
-    { value: 'USD', label: '💵 Dólar (USD)', color: 'text-emerald-600' },
-    { value: 'BS', label: '🇻🇪 Bolívar (BS)', color: 'text-orange-500' },
-    { value: 'EUR', label: '💶 Euro (EUR)', color: 'text-blue-600' },
+    { value: 'USD_EFECTIVO', label: '💵 Divisa en Efectivo (USD)', color: 'text-emerald-600' },
+    { value: 'USD_TRANSFERENCIA', label: '💳 Divisa por Transferencia (Zelle, etc)', color: 'text-emerald-500' },
+    { value: 'BS_EFECTIVO', label: '🇻🇪 BS en Efectivo', color: 'text-orange-600' },
+    { value: 'BS_TRANSFERENCIA', label: '📱 BS por Transferencia (Pago Móvil, etc)', color: 'text-orange-500' },
+    { value: 'EUR_EFECTIVO', label: '💶 Euro en Efectivo (EUR)', color: 'text-blue-600' },
 ];
 
 export default function MetodosPagoPage() {
@@ -137,7 +139,7 @@ export default function MetodosPagoPage() {
                             </div>
                             <div className="flex gap-2 shrink-0 border-l border-gray-50 pl-6">
                                 <button
-                                    onClick={() => { setForm({ name: m.name, accountNumber: m.accountNumber || '', currency: m.currency || 'USD', active: m.active }); setEditing(m._id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                                    onClick={() => { setForm({ name: m.name, accountNumber: m.accountNumber || '', currency: m.currency || 'USD_EFECTIVO', active: m.active }); setEditing(m._id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                                     className="p-4 bg-gray-50 text-slate-400 rounded-2xl hover:bg-blue-600 hover:text-white transition"
                                 >
                                     ✏️

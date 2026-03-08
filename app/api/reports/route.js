@@ -95,7 +95,7 @@ export async function GET(req) {
             paymentBreakdown[methodName].totalBs += s.totalBs || 0;
 
             // Increment the sum in the specific currency of the method
-            if (currency === 'BS') {
+            if (currency.startsWith('BS')) {
                 paymentBreakdown[methodName].mainTotal += s.totalBs || 0;
             } else {
                 paymentBreakdown[methodName].mainTotal += s.totalUsd || 0;

@@ -4,6 +4,24 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+export async function GET(req) {
+    await dbConnect();
+    try {
+        const { searchParams } = new URL(req.url);
+        const limit = parseInt(searchParams.get('limit')) || 100;
+
+        const sales = await Sale.find({})
+            .populate('customerId', 'name idNumber')
+            .populate('items.productId', 'name code')
+            .sort({ date: -1 })
+            .limit(limit);
+
+        return NextResponse.json(sales);
+    } catch (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}
+
 export async function POST(req) {
     await dbConnect();
     try {
