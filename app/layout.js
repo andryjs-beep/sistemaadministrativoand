@@ -1,4 +1,4 @@
-import { Inter, Outfit } from "next/font-family";
+import { Inter, Outfit } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/ui/Sidebar";
 
