@@ -449,7 +449,7 @@ export default function PosPage() {
                                     );
                                 })}
                                 <div className={`text-center py-1.5 rounded-lg font-black text-[9px] uppercase ${Math.abs(remaining) < 0.01 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
-                                    {Math.abs(remaining) < 0.01 ? '✅ OK' : `⚠️ Falta: $${remaining.toFixed(2)}`}
+                                    {Math.abs(remaining) < 0.01 ? '✅ OK' : `⚠️ Falta: $${remaining.toFixed(2)} / Bs. ${(remaining * bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                                 </div>
                             </div>
                         )}
