@@ -1,6 +1,7 @@
 import dbConnect from '@/lib/db';
 import User from '@/lib/models';
 import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,9 +19,24 @@ export async function POST(req) {
     await dbConnect();
     try {
         const body = await req.json();
-        // Nota: En producción, hashear la contraseña aquí antes de guardar
-        const newUser = await User.create(body);
-        const { password, ...userWithoutPassword } = newUser._doc;
+        const { username, password, role, permissions } = body;
+
+        if (!password) {
+            return NextResponse.json({ error: 'Contraseña requerida' }, { status: 400 });
+        }
+
+        // Hashear contraseña
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const newUser = await User.create({
+            username,
+            password: hashedPassword,
+            role,
+            permissions
+        });
+
+        const { password: _, ...userWithoutPassword } = newUser._doc;
         return NextResponse.json(userWithoutPassword, { status: 201 });
     } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
