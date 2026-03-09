@@ -26,12 +26,16 @@ export async function POST(req) {
     await dbConnect();
     try {
         const body = await req.json();
-        const { items, paymentMethod, customerId, accountNumber } = body;
+        const { items, paymentMethod, customerId, accountNumber, userId } = body;
 
-        // 1. Validar que la caja esté abierta
-        const activeSession = await CashSession.findOne({ status: 'open' });
+        if (!userId) {
+            return NextResponse.json({ error: 'UserId requerido para procesar venta' }, { status: 400 });
+        }
+
+        // 1. Validar que la caja del usuario esté abierta
+        const activeSession = await CashSession.findOne({ status: 'open', openedBy: userId });
         if (!activeSession) {
-            return NextResponse.json({ error: 'Debes abrir la caja antes de procesar ventas' }, { status: 400 });
+            return NextResponse.json({ error: 'Debes abrir tu caja antes de procesar ventas' }, { status: 400 });
         }
 
         // 2. Obtener tasa BCV (Prioridad Euro según usuario)

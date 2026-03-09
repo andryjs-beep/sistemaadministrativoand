@@ -127,6 +127,7 @@ export default function PosPage() {
         const method = methods.find(m => m.name === paymentMethod);
 
         try {
+            const storedUser = JSON.parse(localStorage.getItem('user'));
             const res = await fetch('/api/sales', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -138,7 +139,8 @@ export default function PosPage() {
                     })),
                     paymentMethod,
                     accountNumber: method?.accountNumber,
-                    customerId: selectedCustomerId
+                    customerId: selectedCustomerId,
+                    userId: storedUser?._id
                 })
             });
 
@@ -173,7 +175,7 @@ export default function PosPage() {
     );
 
     return (
-        <div className="h-screen flex flex-col bg-gray-50 font-sans overflow-hidden text-slate-900">
+        <div className="h-[100dvh] flex flex-col bg-gray-50 font-sans overflow-hidden text-slate-900">
             {/* Header mejorado */}
             <header className="bg-white px-4 md:px-8 py-4 shadow-sm flex flex-col md:flex-row justify-between items-center z-30 gap-4 border-b">
                 <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
@@ -298,7 +300,7 @@ export default function PosPage() {
                                         <button onClick={() => removeFromCart(item._id)} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-400 rounded-full hover:bg-red-500 hover:text-white transition-colors text-xs shrink-0">✕</button>
                                     </div>
 
-                                    <div className="flex items-center justify-between gap-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-2 md:gap-3 w-full">
                                         {/* Selector de cantidad compacto */}
                                         <div className="flex items-center bg-white shadow-sm rounded-xl p-1 border">
                                             <button onClick={() => updateQuantity(item._id, -1)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center hover:bg-gray-50 text-slate-900 font-black text-lg rounded-lg">-</button>

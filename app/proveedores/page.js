@@ -92,6 +92,7 @@ export default function ProveedoresPage() {
         try {
             const body = {
                 ...expForm,
+                providerId: expForm.providerId || null,
                 cashSessionId: cashSession?._id || null,
                 providerName: providers.find(p => p._id === expForm.providerId)?.name || 'Sin proveedor',
             };

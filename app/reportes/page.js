@@ -13,7 +13,13 @@ export default function ReportesPage() {
         setLoading(true);
         try {
             let url = `/api/reports?type=${reportType}`;
-            if (reportType === 'range') url += `&dateFrom=${dateFrom}&dateTo=${dateTo}`;
+            if (reportType === 'daily') {
+                const start = new Date(); start.setHours(0, 0, 0, 0);
+                const end = new Date(); end.setHours(23, 59, 59, 999);
+                url += `&dateFrom=${start.toISOString()}&dateTo=${end.toISOString()}`;
+            } else if (reportType === 'range') {
+                url += `&dateFrom=${dateFrom}&dateTo=${dateTo}`;
+            }
             const res = await fetch(url);
             const json = await res.json();
             setData(json);
@@ -25,6 +31,7 @@ export default function ReportesPage() {
 
     const s = data?.summary || {};
     const payBreak = data?.paymentBreakdown || {};
+    const expBreak = data?.expenseBreakdown || {};
     const topProd = data?.topProducts || [];
 
     const printReport = () => window.print();
@@ -185,6 +192,28 @@ export default function ReportesPage() {
                     </div>
                 </div>
             </div>
+
+            {/* ===== EGRESOS POR MÉTODO DE PAGO ===== */}
+            {Object.keys(expBreak).length > 0 && (
+                <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm mb-8">
+                    <h3 className="font-black text-red-600 uppercase text-xs tracking-widest mb-6 border-b pb-4">📤 Egresos por Método de Pago</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {Object.entries(expBreak).map(([method, info]) => (
+                            <div key={method} className="flex items-center gap-4 p-4 rounded-2xl bg-red-50/50 hover:bg-red-50 transition">
+                                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 bg-red-100 text-red-500">📤</div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-black text-slate-700 uppercase truncate">{method}</p>
+                                    <p className="text-[8px] font-bold text-gray-400">{info.count} egresos</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-base font-black text-red-600">${(info.totalUsd || 0).toFixed(2)}</p>
+                                    <p className="text-[8px] font-bold text-gray-400">Bs. {(info.totalBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Sales Detail table */}
             <div className="bg-white rounded-[40px] border border-gray-100 shadow-xl overflow-hidden mb-12">

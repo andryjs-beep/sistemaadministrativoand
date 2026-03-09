@@ -18,6 +18,7 @@ export default function ProductosPage() {
     const [form, setForm] = useState(emptyForm);
     const [isEditing, setIsEditing] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [uploading, setUploading] = useState(false);
     const [search, setSearch] = useState('');
 
     useEffect(() => {
@@ -60,6 +61,31 @@ export default function ProductosPage() {
             alert(`Error de red: ${err.message}`);
         }
         setLoading(false);
+    };
+
+    const handleImageUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setUploading(true);
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const res = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setForm(prev => ({ ...prev, imageUrl: data.url }));
+            } else {
+                alert(`Error al subir imagen: ${data.error}`);
+            }
+        } catch (err) {
+            alert('Error al subir imagen');
+        }
+        setUploading(false);
     };
 
     const startEdit = (p) => {
@@ -198,11 +224,22 @@ export default function ProductosPage() {
                                 </div>
                             )}
 
-                            {/* Image URL */}
+                            {/* Image Upload */}
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-3">Imagen URL (Opcional)</label>
-                                <input placeholder="https://..."
-                                    className="w-full p-4 rounded-2xl bg-gray-100 border-none focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-900 text-sm"
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-3">Imagen del Producto</label>
+                                <div className="flex gap-2">
+                                    <label className="flex-1 cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold p-4 rounded-2xl flex items-center justify-center gap-2 transition text-sm">
+                                        {uploading ? '⏳ Subiendo...' : '📸 Cargar Imagen'}
+                                        <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
+                                    </label>
+                                    {form.imageUrl && (
+                                        <div className="w-14 h-14 bg-gray-100 rounded-2xl overflow-hidden shrink-0 border border-gray-200">
+                                            <img src={form.imageUrl} className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
+                                </div>
+                                <input placeholder="O pega una URL aquí..."
+                                    className="w-full mt-2 p-3 rounded-xl bg-gray-50 border-none focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-600 text-xs"
                                     value={form.imageUrl} onChange={e => setForm({ ...form, imageUrl: e.target.value })} />
                             </div>
 

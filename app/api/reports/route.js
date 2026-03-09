@@ -1,5 +1,5 @@
 import dbConnect from '@/lib/db';
-import { Sale, Expense, CashSession } from '@/lib/models';
+import { Sale, Expense, CashSession, PaymentMethod } from '@/lib/models';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -10,6 +10,7 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const type = searchParams.get('type') || 'daily';
         const sessionId = searchParams.get('sessionId');
+        const userId = searchParams.get('userId'); // Nueva opción de filtrado por usuario
         const dateFrom = searchParams.get('dateFrom');
         const dateTo = searchParams.get('dateTo');
 
@@ -19,6 +20,9 @@ export async function GET(req) {
         if (type === 'session' && sessionId) {
             saleQuery = { cashSessionId: sessionId };
             expenseQuery = { cashSessionId: sessionId };
+        } else if (type === 'daily' && dateFrom && dateTo) {
+            saleQuery = { date: { $gte: new Date(dateFrom), $lte: new Date(dateTo) } };
+            expenseQuery = { date: { $gte: new Date(dateFrom), $lte: new Date(dateTo) } };
         } else if (type === 'daily') {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -33,6 +37,13 @@ export async function GET(req) {
             to.setHours(23, 59, 59, 999);
             saleQuery = { date: { $gte: from, $lte: to } };
             expenseQuery = { date: { $gte: from, $lte: to } };
+        }
+
+        // Aplicar filtro de usuario si existe (Vendedores solo ven lo suyo)
+        if (userId) {
+            saleQuery.userId = userId;
+            // Para egresos, solo filtramos si el egreso tiene un usuario asociado (opcional según modelo)
+            // expenseQuery.userId = userId; 
         }
 
         const [sales, expenses, cashSessions, allPaymentMethods] = await Promise.all([
@@ -119,6 +130,18 @@ export async function GET(req) {
         });
         const topProducts = Object.values(productMap).sort((a, b) => b.qty - a.qty).slice(0, 10);
 
+        // Expense breakdown by payment method
+        const expenseBreakdown = {};
+        expenses.forEach(exp => {
+            const methodName = exp.paymentMethod || 'Otro';
+            if (!expenseBreakdown[methodName]) {
+                expenseBreakdown[methodName] = { count: 0, totalUsd: 0, totalBs: 0 };
+            }
+            expenseBreakdown[methodName].count++;
+            expenseBreakdown[methodName].totalUsd += exp.amountUsd || 0;
+            expenseBreakdown[methodName].totalBs += exp.amountBs || 0;
+        });
+
         return NextResponse.json({
             summary: {
                 salesCount: sales.length,
@@ -135,6 +158,7 @@ export async function GET(req) {
                 discountedSalesCount,
             },
             paymentBreakdown,
+            expenseBreakdown,
             topProducts,
             sales,
             expenses,

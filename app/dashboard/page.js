@@ -10,47 +10,80 @@ export default function DashboardPage() {
         lowStock: 0,
         customers: 0,
         quotations: 0,
-        totalUsdDay: 0
+        totalUsdDay: 0,
+        totalExpensesUsd: 0,
+        totalProfit: 0,
+        grossMarginPct: 0
     });
     const [rates, setRates] = useState({ usd: 36.5, eur: 39.8 });
     const [recentSales, setRecentSales] = useState([]);
-    const [isEditingRate, setIsEditingRate] = useState(null); // 'USD' o 'EUR'
+    const [payBreak, setPayBreak] = useState({});
+    const [expenseBreak, setExpenseBreak] = useState({});
+    const [isEditingRate, setIsEditingRate] = useState(null);
     const [tempRate, setTempRate] = useState('');
 
     useEffect(() => {
         fetchStats();
         fetchBcv();
+        fetchTodayReport();
     }, []);
 
     const fetchStats = async () => {
         try {
-            const [prodRes, saleRes, custRes, quoteRes] = await Promise.all([
+            const [prodRes, custRes, quoteRes] = await Promise.all([
                 fetch('/api/products'),
-                fetch('/api/sales'),
                 fetch('/api/customers'),
                 fetch('/api/quotations')
             ]);
 
             const products = await prodRes.json();
-            const sales = await saleRes.json();
             const customers = await custRes.json();
             const quotes = await quoteRes.json();
 
-            const today = new Date().toISOString().split('T')[0];
-            const itemsToday = Array.isArray(sales) ? sales.filter(s => s.createdAt.startsWith(today)) : [];
-
-            setStats({
+            setStats(prev => ({
+                ...prev,
                 products: Array.isArray(products) ? products.length : 0,
                 lowStock: Array.isArray(products) ? products.filter(p => p.stock <= p.minStock).length : 0,
-                salesToday: itemsToday.length,
-                totalUsdDay: itemsToday.reduce((acc, s) => acc + (s.totalUsd || 0), 0),
                 customers: Array.isArray(customers) ? customers.length : 0,
                 quotations: Array.isArray(quotes) ? quotes.filter(q => q.status === 'open').length : 0
-            });
-
-            setRecentSales(itemsToday.slice(0, 5));
+            }));
         } catch (e) {
             console.error('Error fetching dashboard stats', e);
+        }
+    };
+
+    const fetchTodayReport = async () => {
+        try {
+            const storedUser = JSON.parse(localStorage.getItem('user'));
+            const start = new Date(); start.setHours(0, 0, 0, 0);
+            const end = new Date(); end.setHours(23, 59, 59, 999);
+
+            let url = `/api/reports?type=daily&dateFrom=${start.toISOString()}&dateTo=${end.toISOString()}`;
+
+            // Si es vendedor, solo mostrar sus propias ventas
+            if (storedUser && storedUser.role === 'vendedor') {
+                url += `&userId=${storedUser._id}`;
+            }
+
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if (data?.summary) {
+                setStats(prev => ({
+                    ...prev,
+                    salesToday: data.summary.salesCount || 0,
+                    totalUsdDay: data.summary.totalSalesUsd || 0,
+                    totalExpensesUsd: data.summary.totalExpensesUsd || 0,
+                    totalProfit: data.summary.totalProfit || 0,
+                    grossMarginPct: data.summary.grossMarginPct || 0
+                }));
+            }
+
+            setPayBreak(data?.paymentBreakdown || {});
+            setExpenseBreak(data?.expenseBreakdown || {});
+            setRecentSales((data?.sales || []).slice(0, 5));
+        } catch (e) {
+            console.error('Error fetching today report', e);
         }
     };
 
@@ -160,6 +193,69 @@ export default function DashboardPage() {
                 ))}
             </div>
 
+            {/* ===== TOTALES DEL DÍA ===== */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-[32px] text-white shadow-xl col-span-2">
+                    <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-1">Total Ventas Brutas ($)</p>
+                    <p className="text-3xl font-black tracking-tighter">${stats.totalUsdDay.toFixed(2)}</p>
+                </div>
+                <div className="bg-red-50 p-6 rounded-[32px] border border-red-100">
+                    <p className="text-[9px] font-black text-red-400 uppercase tracking-widest mb-1">Gastos / Egresos</p>
+                    <p className="text-2xl font-black text-red-600">${stats.totalExpensesUsd.toFixed(2)}</p>
+                </div>
+                <div className="bg-emerald-50 p-6 rounded-[32px] border border-emerald-100">
+                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-1">Utilidad Neta</p>
+                    <p className="text-2xl font-black text-emerald-600">${stats.totalProfit.toFixed(2)}</p>
+                    <p className="text-[8px] font-bold text-emerald-400">+{stats.grossMarginPct}% margen</p>
+                </div>
+            </div>
+
+            {/* ===== INGRESOS POR MÉTODO DE PAGO ===== */}
+            {Object.keys(payBreak).length > 0 && (
+                <div className="bg-white p-6 md:p-8 rounded-[40px] border border-gray-100 shadow-sm mb-8">
+                    <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest mb-6 border-b pb-4">💰 Ventas por Método de Pago</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {Object.entries(payBreak).map(([method, info]) => {
+                            const isBs = info.currency && info.currency.startsWith('BS');
+                            return (
+                                <div key={method} className="flex items-center gap-3 p-4 rounded-2xl bg-gray-50">
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${isBs ? 'bg-orange-100 text-orange-500' : 'bg-emerald-100 text-emerald-500'}`}>
+                                        {isBs ? '🇻🇪' : '💵'}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-black text-slate-700 uppercase truncate">{method}</p>
+                                        <p className="text-[8px] font-bold text-gray-400">{info.count} ventas</p>
+                                    </div>
+                                    <p className={`text-base font-black ${isBs ? 'text-orange-500' : 'text-emerald-600'}`}>
+                                        {isBs ? 'Bs. ' : '$'}
+                                        {(info.mainTotal || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* ===== EGRESOS POR MÉTODO ===== */}
+            {Object.keys(expenseBreak).length > 0 && (
+                <div className="bg-white p-6 md:p-8 rounded-[40px] border border-gray-100 shadow-sm mb-8">
+                    <h3 className="font-black text-red-600 uppercase text-xs tracking-widest mb-6 border-b pb-4">📤 Egresos por Método de Pago</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {Object.entries(expenseBreak).map(([method, info]) => (
+                            <div key={method} className="flex items-center gap-3 p-4 rounded-2xl bg-red-50/50">
+                                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 bg-red-100 text-red-500">📤</div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-black text-slate-700 uppercase truncate">{method}</p>
+                                    <p className="text-[8px] font-bold text-gray-400">{info.count} egresos</p>
+                                </div>
+                                <p className="text-base font-black text-red-600">${(info.totalUsd || 0).toFixed(2)}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
                 {/* Ventas Recientes */}
                 <div className="lg:col-span-2 bg-white p-6 md:p-10 rounded-[40px] shadow-sm border border-gray-100 relative overflow-hidden">
@@ -175,11 +271,11 @@ export default function DashboardPage() {
                                     <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-xl border border-gray-50">🧾</div>
                                     <div>
                                         <p className="font-black text-slate-800 text-sm tracking-tight">{sale.saleId}</p>
-                                        <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">{new Date(sale.createdAt).toLocaleTimeString()} • {new Date(sale.createdAt).toLocaleDateString()}</p>
+                                        <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">{new Date(sale.createdAt || sale.date).toLocaleTimeString()} • {new Date(sale.createdAt || sale.date).toLocaleDateString()}</p>
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <p className="font-black text-emerald-600 text-lg tracking-tighter">${sale.totalUsd.toFixed(2)}</p>
+                                    <p className="font-black text-emerald-600 text-lg tracking-tighter">${(sale.totalUsd || 0).toFixed(2)}</p>
                                     <span className="text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full uppercase italic">{sale.paymentMethod}</span>
                                 </div>
                             </div>
@@ -238,6 +334,10 @@ export default function DashboardPage() {
                     </div>
                 </div>
             </div>
+
+            <button onClick={fetchTodayReport} className="fixed bottom-6 right-6 bg-blue-600 text-white font-black px-6 py-4 rounded-2xl shadow-2xl hover:bg-blue-700 transition active:scale-95 text-xs uppercase tracking-widest z-50">
+                🔄 Actualizar
+            </button>
         </div>
     );
 }

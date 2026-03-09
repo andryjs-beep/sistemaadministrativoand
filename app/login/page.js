@@ -13,14 +13,26 @@ export default function LoginPage() {
         e.preventDefault();
         setLoading(true);
 
-        // Simulación de login (setup API prepara el admin original)
-        if (username === 'admin' && password === 'admin') {
-            localStorage.setItem('user', JSON.stringify({ username, role: 'admin' }));
-            router.push('/dashboard');
-        } else {
-            alert('Credenciales no válidas. Consulte al administrador.');
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                localStorage.setItem('user', JSON.stringify(data.user));
+                router.push('/dashboard');
+            } else {
+                alert(data.error || 'Credenciales no válidas. Consulte al administrador.');
+            }
+        } catch (error) {
+            alert('Error al conectar con el servidor.');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     return (
