@@ -334,87 +334,81 @@ export default function PosPage() {
                 </div>
 
                 {/* Panel lateral - Carrito y Pagos */}
-                <div className={`absolute md:relative top-0 right-0 w-full md:w-[420px] lg:w-[480px] h-full bg-white shadow-2xl p-4 md:p-6 lg:p-8 z-20 border-l border-gray-100 flex flex-col transition-transform duration-300 ${showCartMobile ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
-                    <div className="flex items-center justify-between mb-6 md:mb-8 pt-2 md:pt-0 border-b md:border-none pb-4 md:pb-0">
-                        <div className="flex items-center gap-3 md:gap-4">
-                            <span className="bg-slate-900 text-white w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-base md:text-lg">{cart.length}</span>
-                            <h2 className="text-xl md:text-2xl font-black text-slate-800 uppercase tracking-tighter">Carrito de Venta</h2>
+                <div className={`absolute md:relative top-0 right-0 w-full md:w-[420px] lg:w-[480px] h-full bg-white shadow-2xl z-20 border-l border-gray-100 flex flex-col transition-transform duration-300 ${showCartMobile ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
+                    {/* Header fijo del carrito */}
+                    <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-gray-100 shrink-0">
+                        <div className="flex items-center gap-3">
+                            <span className="bg-slate-900 text-white w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm">{cart.length}</span>
+                            <h2 className="text-lg font-black text-slate-800 uppercase tracking-tighter">Carrito</h2>
                         </div>
-                        <button onClick={() => setCart([])} className="text-[10px] md:text-xs font-black text-red-500 hover:scale-105 transition-transform uppercase italic">Vaciar Carrito</button>
+                        <button onClick={() => setCart([])} className="text-[10px] font-black text-red-500 hover:scale-105 transition-transform uppercase italic">Vaciar</button>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto space-y-3 md:space-y-4 pr-1 md:pr-2 custom-scrollbar">
-                        {cart.map(item => {
-                            const { price, isWholesale } = calculateItemPrice(item);
-                            return (
-                                <div key={item._id} className="bg-gray-50 p-4 md:p-5 rounded-[20px] md:rounded-[28px] border border-gray-100 relative group animate-in slide-in-from-right duration-300">
-                                    <div className="flex justify-between items-start mb-3 md:mb-4">
-                                        <div className="flex-1 pr-4">
-                                            <p className="font-black text-slate-800 text-xs md:text-sm uppercase leading-tight line-clamp-2 mb-1">{item.name}</p>
-                                            <p className="text-[9px] md:text-[10px] text-gray-400 font-bold uppercase tracking-widest">{item.code}</p>
+                    {/* TODO el contenido del carrito scrollea junto */}
+                    <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3 custom-scrollbar">
+                        {/* Items del carrito */}
+                        <div className="space-y-3">
+                            {cart.map(item => {
+                                const { price, isWholesale } = calculateItemPrice(item);
+                                return (
+                                    <div key={item._id} className="bg-gray-50 p-3 md:p-4 rounded-2xl border border-gray-100">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="flex-1 pr-3">
+                                                <p className="font-black text-slate-800 text-[11px] md:text-xs uppercase leading-tight line-clamp-1">{item.name}</p>
+                                                <p className="text-[8px] text-gray-400 font-bold uppercase tracking-widest">{item.code}</p>
+                                            </div>
+                                            <button onClick={() => removeFromCart(item._id)} className="w-7 h-7 flex items-center justify-center bg-red-50 text-red-400 rounded-full hover:bg-red-500 hover:text-white transition-colors text-[10px] shrink-0">✕</button>
                                         </div>
-                                        <button onClick={() => removeFromCart(item._id)} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-400 rounded-full hover:bg-red-500 hover:text-white transition-colors text-xs shrink-0">✕</button>
-                                    </div>
-
-                                    <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-2 md:gap-3 w-full">
-                                        {/* Selector de cantidad */}
-                                        <div className="flex items-center bg-white shadow-sm rounded-xl p-1 border">
-                                            <button onClick={() => updateQuantity(item._id, -1)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center hover:bg-gray-50 text-slate-900 font-black text-lg rounded-lg">-</button>
-                                            <span className="w-6 md:w-8 text-center font-black text-sm md:text-base">{item.quantity}</span>
-                                            <button onClick={() => updateQuantity(item._id, 1)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center hover:bg-gray-50 text-slate-900 font-black text-lg rounded-lg">+</button>
-                                        </div>
-
-                                        {/* Input descuento por valor en $ */}
-                                        <div className="space-y-1 w-16 md:w-20">
-                                            <label className="text-[8px] md:text-[9px] font-black text-orange-500 uppercase text-center block tracking-tighter">Desc. $</label>
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                className="w-full bg-white border border-orange-200 focus:border-orange-500 rounded-lg md:rounded-xl text-xs md:text-sm font-black text-center py-1.5 md:py-2 outline-none shadow-sm text-slate-900"
-                                                value={item.discountValue || ''}
-                                                onChange={(e) => updateDiscount(item._id, e.target.value)}
-                                                placeholder="0.00"
-                                                min="0"
-                                            />
-                                        </div>
-
-                                        <div className="text-right flex flex-col items-end">
-                                            <span className={`text-[8px] md:text-[9px] font-black uppercase mb-0.5 ${isWholesale ? 'text-violet-600 animate-pulse' : 'text-gray-400'}`}>
-                                                {isWholesale ? '🔥 Mayor' : 'Detal'}
-                                            </span>
-                                            <span className="font-black text-slate-800 text-base md:text-lg tracking-tighter">${(price * item.quantity).toFixed(2)}</span>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center bg-white shadow-sm rounded-lg p-0.5 border">
+                                                <button onClick={() => updateQuantity(item._id, -1)} className="w-7 h-7 flex items-center justify-center text-slate-900 font-black text-sm rounded">-</button>
+                                                <span className="w-6 text-center font-black text-sm">{item.quantity}</span>
+                                                <button onClick={() => updateQuantity(item._id, 1)} className="w-7 h-7 flex items-center justify-center text-slate-900 font-black text-sm rounded">+</button>
+                                            </div>
+                                            <div className="w-16">
+                                                <label className="text-[7px] font-black text-orange-500 uppercase text-center block">Desc.$</label>
+                                                <input
+                                                    type="number" step="0.01"
+                                                    className="w-full bg-white border border-orange-200 focus:border-orange-500 rounded-lg text-xs font-black text-center py-1 outline-none text-slate-900"
+                                                    value={item.discountValue || ''}
+                                                    onChange={(e) => updateDiscount(item._id, e.target.value)}
+                                                    placeholder="0.00" min="0"
+                                                />
+                                            </div>
+                                            <div className="text-right">
+                                                <span className={`text-[7px] font-black uppercase ${isWholesale ? 'text-violet-600' : 'text-gray-400'}`}>
+                                                    {isWholesale ? '🔥Mayor' : 'Detal'}
+                                                </span>
+                                                <p className="font-black text-slate-800 text-sm tracking-tighter">${(price * item.quantity).toFixed(2)}</p>
+                                            </div>
                                         </div>
                                     </div>
+                                );
+                            })}
+                            {cart.length === 0 && (
+                                <div className="flex flex-col items-center justify-center opacity-20 py-16 grayscale">
+                                    <span className="text-7xl mb-4">🛒</span>
+                                    <p className="font-black uppercase tracking-[0.3em] text-[10px]">Agrega productos</p>
                                 </div>
-                            );
-                        })}
-                        {cart.length === 0 && (
-                            <div className="flex flex-col items-center justify-center h-full opacity-20 py-24 grayscale">
-                                <span className="text-8xl md:text-9xl mb-6">🛒</span>
-                                <p className="font-black uppercase tracking-[0.3em] text-[10px] md:text-xs">Agrega productos</p>
-                            </div>
-                        )}
-                    </div>
+                            )}
+                        </div>
 
-                    <div className="mt-4 md:mt-8 pt-4 md:pt-6 space-y-4 md:space-y-6 bg-white shrink-0 shadow-[0_-20px_20px_-15px_rgba(0,0,0,0.05)] md:shadow-none pb-2 md:pb-0 z-10">
-                        <div className="space-y-3 md:space-y-4">
-                            <div className="flex justify-between items-baseline px-2">
-                                <span className="text-slate-800 font-black text-xl md:text-2xl uppercase tracking-tighter italic">Total USD</span>
-                                <span className="text-emerald-600 font-black text-3xl md:text-4xl tracking-tighter italic">${totalUsd.toFixed(2)}</span>
+                        {/* Totales compactos */}
+                        <div className="mt-4 pt-3 border-t border-gray-200 space-y-2">
+                            <div className="flex justify-between items-center">
+                                <span className="text-slate-800 font-black text-lg uppercase tracking-tighter italic">Total USD</span>
+                                <span className="text-emerald-600 font-black text-2xl tracking-tighter italic">${totalUsd.toFixed(2)}</span>
                             </div>
-                            <div className="bg-slate-900 px-5 md:px-6 py-4 md:py-6 rounded-[24px] md:rounded-[32px] text-white shadow-xl relative overflow-hidden flex justify-between items-center group">
-                                <div className="relative z-10">
-                                    <p className="text-[8px] md:text-[10px] font-black text-white/50 uppercase tracking-[0.2em] mb-1">Total en Bolívares</p>
-                                    <p className="text-2xl md:text-3xl font-black italic tracking-tighter">Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
-                                </div>
-                                <div className="absolute top-0 right-0 h-full w-24 bg-gradient-to-l from-white/10 to-transparent skew-x-[30deg] translate-x-12"></div>
+                            <div className="bg-slate-900 px-4 py-3 rounded-2xl text-white flex justify-between items-center">
+                                <span className="text-[8px] font-black text-white/50 uppercase tracking-widest">Total Bs.</span>
+                                <span className="text-lg font-black italic tracking-tighter">Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
                             </div>
                         </div>
 
-                        {/* Selección de Métodos de Pago (Multi-Selección) */}
-                        <div>
-                            <p className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 md:mb-4 block text-center border-b pb-2">Formas de Pago (Multi-Selección)</p>
-                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">
+                        {/* Métodos de Pago */}
+                        <div className="mt-4 pt-3 border-t border-gray-200">
+                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 text-center">Formas de Pago</p>
+                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
                                 {methods.map(m => {
                                     const isSelected = selectedMethods.some(p => p.methodName === m.name);
                                     return (
@@ -422,63 +416,57 @@ export default function PosPage() {
                                             key={m._id}
                                             type="button"
                                             onClick={() => toggleMethod(m)}
-                                            className={`group relative py-3 md:py-4 px-1 md:px-2 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase transition-all border-2 overflow-hidden flex flex-col items-center gap-1 ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-lg scale-105' : 'bg-gray-50 border-gray-50 text-gray-400 hover:border-blue-100 hover:bg-white'}`}
+                                            className={`py-2 px-1 rounded-xl text-[9px] font-black uppercase transition-all border-2 flex flex-col items-center gap-0.5 ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-lg scale-105' : 'bg-gray-50 border-gray-50 text-gray-400 hover:border-blue-100'}`}
                                         >
-                                            <span className="relative z-10 max-w-full truncate px-1">{m.name}</span>
-                                            <div className="flex items-center justify-center gap-1 opacity-70">
-                                                <span className="text-[7px] md:text-[8px] border px-1 rounded-sm">{m.currency || 'USD'}</span>
-                                            </div>
-                                            {isSelected && <span className="absolute -top-1 -right-1 text-base md:text-lg">✅</span>}
+                                            <span className="max-w-full truncate px-1">{m.name}</span>
+                                            <span className="text-[7px] border px-1 rounded-sm opacity-70">{m.currency || 'USD'}</span>
+                                            {isSelected && <span className="absolute -top-1 -right-1 text-sm">✅</span>}
                                         </button>
                                     );
                                 })}
-                                {methods.length === 0 && <p className="col-span-full text-[10px] font-black text-red-400 text-center py-4 bg-red-50 rounded-xl uppercase">⚠️ Sin métodos creados</p>}
+                                {methods.length === 0 && <p className="col-span-full text-[10px] font-black text-red-400 text-center py-3 bg-red-50 rounded-xl uppercase">⚠️ Sin métodos</p>}
                             </div>
                         </div>
 
-                        {/* Campos de Monto por Método Seleccionado */}
+                        {/* Distribución de Multi-Pago */}
                         {selectedMethods.length > 1 && (
-                            <div className="space-y-3 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-2xl border border-blue-100">
-                                <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest text-center">Distribuir Monto por Método</p>
+                            <div className="mt-3 space-y-2 bg-blue-50/50 p-3 rounded-2xl border border-blue-100">
+                                <p className="text-[8px] font-black text-blue-600 uppercase tracking-widest text-center">Distribuir Monto</p>
                                 {selectedMethods.map(pm => {
                                     const isBs = (pm.currency || '').toUpperCase().includes('BS');
                                     const currLabel = isBs ? 'Bs.' : '$';
                                     return (
-                                        <div key={pm.methodName} className="bg-white rounded-xl p-3 shadow-sm border border-blue-50">
-                                            <label className="text-[9px] font-black text-slate-600 uppercase tracking-wider block mb-1">
-                                                {pm.methodName} ({pm.currency || 'USD'})
-                                            </label>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-sm font-black text-blue-600">{currLabel}</span>
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    placeholder="0.00"
-                                                    className="flex-1 bg-gray-50 border border-gray-200 focus:border-blue-500 rounded-lg text-sm font-black py-2 px-3 outline-none text-slate-900"
-                                                    value={pm.amount || ''}
-                                                    onChange={(e) => updateMethodAmount(pm.methodName, e.target.value)}
-                                                    min="0"
-                                                />
-                                            </div>
+                                        <div key={pm.methodName} className="bg-white rounded-xl p-2 border border-blue-50 flex items-center gap-2">
+                                            <span className="text-[8px] font-black text-slate-500 uppercase flex-1 truncate">{pm.methodName}</span>
+                                            <span className="text-xs font-black text-blue-600">{currLabel}</span>
+                                            <input
+                                                type="number" step="0.01" placeholder="0.00" min="0"
+                                                className="w-24 bg-gray-50 border border-gray-200 focus:border-blue-500 rounded-lg text-sm font-black py-1.5 px-2 outline-none text-slate-900"
+                                                value={pm.amount || ''}
+                                                onChange={(e) => updateMethodAmount(pm.methodName, e.target.value)}
+                                            />
                                         </div>
                                     );
                                 })}
-                                <div className={`text-center py-2 rounded-xl font-black text-[10px] uppercase tracking-wider ${Math.abs(remaining) < 0.01 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
-                                    {Math.abs(remaining) < 0.01 ? '✅ Montos Correctos' : `⚠️ Falta: $${remaining.toFixed(2)} USD`}
+                                <div className={`text-center py-1.5 rounded-lg font-black text-[9px] uppercase ${Math.abs(remaining) < 0.01 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                                    {Math.abs(remaining) < 0.01 ? '✅ OK' : `⚠️ Falta: $${remaining.toFixed(2)}`}
                                 </div>
                             </div>
                         )}
 
-                        <button
-                            disabled={isProcessing || cart.length === 0 || selectedMethods.length === 0}
-                            onClick={handleSale}
-                            className={`w-full py-5 md:py-6 rounded-[24px] md:rounded-[28px] font-black text-sm md:text-base uppercase tracking-[0.2em] md:tracking-[0.3em] transition-all transform active:scale-95 shadow-xl hover:-translate-y-1 mt-2 text-center flex justify-center items-center ${isProcessing || cart.length === 0 || selectedMethods.length === 0
-                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200 ring-4 ring-blue-600/10'
-                                }`}
-                        >
-                            {isProcessing ? '⏳ PROCESANDO...' : (selectedMethods.length > 0 ? `🛒 FACTURAR VENTA` : '⚠️ SELECCIONA PAGO')}
-                        </button>
+                        {/* Botón de facturar - dentro del scroll */}
+                        <div className="mt-4 pb-4">
+                            <button
+                                disabled={isProcessing || cart.length === 0 || selectedMethods.length === 0}
+                                onClick={handleSale}
+                                className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all transform active:scale-95 shadow-xl text-center ${isProcessing || cart.length === 0 || selectedMethods.length === 0
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200 ring-4 ring-blue-600/10'
+                                    }`}
+                            >
+                                {isProcessing ? '⏳ PROCESANDO...' : (selectedMethods.length > 0 ? '🛒 FACTURAR' : '⚠️ SELECCIONA PAGO')}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
