@@ -11,7 +11,7 @@ export default function PosPage() {
     const [customerSearch, setCustomerSearch] = useState('');
     const [selectedCustomerId, setSelectedCustomerId] = useState('');
     const [bcvRate, setBcvRate] = useState(36.50);
-    const [paymentMethod, setPaymentMethod] = useState('');
+    const [selectedMethods, setSelectedMethods] = useState([]);
     const [methods, setMethods] = useState([]);
     const [lastSale, setLastSale] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -22,7 +22,7 @@ export default function PosPage() {
         fetchCustomers();
         fetchMethods();
         fetchBcv();
-        const interval = setInterval(fetchBcv, 120000); // Cada 2 min para no saturar
+        const interval = setInterval(fetchBcv, 120000);
         return () => clearInterval(interval);
     }, []);
 
@@ -54,7 +54,6 @@ export default function PosPage() {
         try {
             const res = await fetch('/api/bcv');
             const data = await res.json();
-            // El API ahora devuelve { usd, eur, value }
             if (data && data.value) setBcvRate(data.value);
         } catch (e) { console.error('Error loading BCV', e); }
     };
@@ -70,7 +69,7 @@ export default function PosPage() {
                 }
                 return prev.map(item => item._id === product._id ? { ...item, quantity: item.quantity + 1 } : item);
             }
-            return [...prev, { ...product, quantity: 1, discountPercent: 0 }];
+            return [...prev, { ...product, quantity: 1, discountValue: 0 }];
         });
     };
 
@@ -89,12 +88,18 @@ export default function PosPage() {
         }));
     };
 
-    const updateDiscount = (id, percent) => {
-        let val = parseFloat(percent);
+    const updateDiscount = (id, value) => {
+        let val = parseFloat(value);
         if (isNaN(val)) val = 0;
         if (val < 0) val = 0;
-        if (val > 100) val = 100;
-        setCart(prev => prev.map(item => item._id === id ? { ...item, discountPercent: val } : item));
+        setCart(prev => prev.map(item => {
+            if (item._id === id) {
+                const { price } = calculateItemPrice({ ...item, discountValue: 0 });
+                if (val > price) val = price;
+                return { ...item, discountValue: val };
+            }
+            return item;
+        }));
     };
 
     const removeFromCart = (id) => setCart(prev => prev.filter(item => item._id !== id));
@@ -106,8 +111,8 @@ export default function PosPage() {
             price = item.wholesalePriceUsd;
             isWholesale = true;
         }
-        if (item.discountPercent > 0) {
-            price = price * (1 - (item.discountPercent / 100));
+        if (item.discountValue > 0) {
+            price = Math.max(0, price - item.discountValue);
         }
         return { price, isWholesale };
     };
@@ -119,15 +124,65 @@ export default function PosPage() {
 
     const totalBs = totalUsd * bcvRate;
 
+    // --- Multi Payment Logic ---
+    const toggleMethod = (method) => {
+        setSelectedMethods(prev => {
+            const exists = prev.find(p => p.methodName === method.name);
+            if (exists) {
+                return prev.filter(p => p.methodName !== method.name);
+            }
+            return [...prev, { methodName: method.name, currency: method.currency || 'USD', amount: 0 }];
+        });
+    };
+
+    const updateMethodAmount = (methodName, amount) => {
+        let val = parseFloat(amount);
+        if (isNaN(val)) val = 0;
+        if (val < 0) val = 0;
+        setSelectedMethods(prev =>
+            prev.map(p => p.methodName === methodName ? { ...p, amount: val } : p)
+        );
+    };
+
+    const totalAssigned = selectedMethods.reduce((acc, p) => {
+        const isBs = (p.currency || '').toUpperCase().includes('BS');
+        return acc + (isBs ? p.amount / bcvRate : p.amount);
+    }, 0);
+
+    const remaining = totalUsd - totalAssigned;
+
     const handleSale = async () => {
         if (cart.length === 0) return alert('El carrito está vacío');
-        if (!paymentMethod) return alert('Debes seleccionar un método de pago');
+        if (selectedMethods.length === 0) return alert('Debes seleccionar al menos un método de pago');
+
+        if (selectedMethods.length === 1 && selectedMethods[0].amount === 0) {
+            // Single method with no amount assigned - auto-fill
+            const isBs = (selectedMethods[0].currency || '').toUpperCase().includes('BS');
+            selectedMethods[0].amount = isBs ? totalBs : totalUsd;
+        }
+
+        if (selectedMethods.length > 1 && Math.abs(remaining) > 0.01) {
+            return alert(`Los montos asignados no cubren el total. Falta: $${remaining.toFixed(2)} USD`);
+        }
 
         setIsProcessing(true);
-        const method = methods.find(m => m.name === paymentMethod);
 
         try {
             const storedUser = JSON.parse(localStorage.getItem('user'));
+            const paymentsPayload = selectedMethods.map(p => {
+                const isBs = (p.currency || '').toUpperCase().includes('BS');
+                return {
+                    method: p.methodName,
+                    currency: p.currency,
+                    amountUsd: isBs ? p.amount / bcvRate : p.amount,
+                    amountBs: isBs ? p.amount : p.amount * bcvRate
+                };
+            });
+
+            const primaryMethod = selectedMethods.length === 1
+                ? selectedMethods[0].methodName
+                : selectedMethods.map(p => p.methodName).join(' + ');
+
             const res = await fetch('/api/sales', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -135,10 +190,10 @@ export default function PosPage() {
                     items: cart.map(item => ({
                         productId: item._id,
                         quantity: item.quantity,
-                        discountPercent: item.discountPercent
+                        discountValue: item.discountValue
                     })),
-                    paymentMethod,
-                    accountNumber: method?.accountNumber,
+                    paymentMethod: primaryMethod,
+                    payments: paymentsPayload,
                     customerId: selectedCustomerId,
                     userId: storedUser?._id
                 })
@@ -150,6 +205,7 @@ export default function PosPage() {
                 setCart([]);
                 setSelectedCustomerId('');
                 setCustomerSearch('');
+                setSelectedMethods([]);
                 fetchProducts();
                 alert('¡Venta completada con éxito!');
             } else {
@@ -176,7 +232,7 @@ export default function PosPage() {
 
     return (
         <div className="h-[100dvh] flex flex-col bg-gray-50 font-sans overflow-hidden text-slate-900">
-            {/* Header mejorado */}
+            {/* Header */}
             <header className="bg-white px-4 md:px-8 py-4 shadow-sm flex flex-col md:flex-row justify-between items-center z-30 gap-4 border-b">
                 <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
                     <h1 className="text-xl font-black text-slate-800 uppercase tracking-tighter w-full text-center md:text-left">Ventas POS</h1>
@@ -301,22 +357,24 @@ export default function PosPage() {
                                     </div>
 
                                     <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-2 md:gap-3 w-full">
-                                        {/* Selector de cantidad compacto */}
+                                        {/* Selector de cantidad */}
                                         <div className="flex items-center bg-white shadow-sm rounded-xl p-1 border">
                                             <button onClick={() => updateQuantity(item._id, -1)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center hover:bg-gray-50 text-slate-900 font-black text-lg rounded-lg">-</button>
                                             <span className="w-6 md:w-8 text-center font-black text-sm md:text-base">{item.quantity}</span>
                                             <button onClick={() => updateQuantity(item._id, 1)} className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center hover:bg-gray-50 text-slate-900 font-black text-lg rounded-lg">+</button>
                                         </div>
 
-                                        {/* Input descuento optimizado */}
+                                        {/* Input descuento por valor en $ */}
                                         <div className="space-y-1 w-16 md:w-20">
-                                            <label className="text-[8px] md:text-[9px] font-black text-gray-400 uppercase text-center block tracking-tighter">Desc. %</label>
+                                            <label className="text-[8px] md:text-[9px] font-black text-orange-500 uppercase text-center block tracking-tighter">Desc. $</label>
                                             <input
                                                 type="number"
-                                                className="w-full bg-white border border-gray-200 focus:border-blue-500 rounded-lg md:rounded-xl text-xs md:text-sm font-black text-center py-1.5 md:py-2 outline-none shadow-sm text-slate-900"
-                                                value={item.discountPercent}
+                                                step="0.01"
+                                                className="w-full bg-white border border-orange-200 focus:border-orange-500 rounded-lg md:rounded-xl text-xs md:text-sm font-black text-center py-1.5 md:py-2 outline-none shadow-sm text-slate-900"
+                                                value={item.discountValue || ''}
                                                 onChange={(e) => updateDiscount(item._id, e.target.value)}
-                                                min="0" max="100"
+                                                placeholder="0.00"
+                                                min="0"
                                             />
                                         </div>
 
@@ -353,41 +411,79 @@ export default function PosPage() {
                             </div>
                         </div>
 
+                        {/* Selección de Métodos de Pago (Multi-Selección) */}
                         <div>
-                            <p className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 md:mb-4 block text-center border-b pb-2">Elegir Forma de Pago</p>
+                            <p className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 md:mb-4 block text-center border-b pb-2">Formas de Pago (Multi-Selección)</p>
                             <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">
-                                {methods.map(m => (
-                                    <button
-                                        key={m._id}
-                                        onClick={() => setPaymentMethod(m.name)}
-                                        className={`group relative py-3 md:py-4 px-1 md:px-2 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase transition-all border-2 overflow-hidden flex flex-col items-center gap-1 ${paymentMethod === m.name ? 'bg-blue-600 border-blue-600 text-white shadow-lg scale-105' : 'bg-gray-50 border-gray-50 text-gray-400 hover:border-blue-100 hover:bg-white'}`}
-                                    >
-                                        <span className="relative z-10 max-w-full truncate px-1">{m.name}</span>
-                                        <div className="flex items-center justify-center gap-1 opacity-70">
-                                            <span className="text-[7px] md:text-[8px] border px-1 rounded-sm">{m.currency || 'USD'}</span>
-                                        </div>
-                                        {paymentMethod === m.name && <span className="absolute -top-1 -right-1 text-base md:text-lg">✨</span>}
-                                    </button>
-                                ))}
+                                {methods.map(m => {
+                                    const isSelected = selectedMethods.some(p => p.methodName === m.name);
+                                    return (
+                                        <button
+                                            key={m._id}
+                                            type="button"
+                                            onClick={() => toggleMethod(m)}
+                                            className={`group relative py-3 md:py-4 px-1 md:px-2 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase transition-all border-2 overflow-hidden flex flex-col items-center gap-1 ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-lg scale-105' : 'bg-gray-50 border-gray-50 text-gray-400 hover:border-blue-100 hover:bg-white'}`}
+                                        >
+                                            <span className="relative z-10 max-w-full truncate px-1">{m.name}</span>
+                                            <div className="flex items-center justify-center gap-1 opacity-70">
+                                                <span className="text-[7px] md:text-[8px] border px-1 rounded-sm">{m.currency || 'USD'}</span>
+                                            </div>
+                                            {isSelected && <span className="absolute -top-1 -right-1 text-base md:text-lg">✅</span>}
+                                        </button>
+                                    );
+                                })}
                                 {methods.length === 0 && <p className="col-span-full text-[10px] font-black text-red-400 text-center py-4 bg-red-50 rounded-xl uppercase">⚠️ Sin métodos creados</p>}
                             </div>
                         </div>
 
+                        {/* Campos de Monto por Método Seleccionado */}
+                        {selectedMethods.length > 1 && (
+                            <div className="space-y-3 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-2xl border border-blue-100">
+                                <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest text-center">Distribuir Monto por Método</p>
+                                {selectedMethods.map(pm => {
+                                    const isBs = (pm.currency || '').toUpperCase().includes('BS');
+                                    const currLabel = isBs ? 'Bs.' : '$';
+                                    return (
+                                        <div key={pm.methodName} className="bg-white rounded-xl p-3 shadow-sm border border-blue-50">
+                                            <label className="text-[9px] font-black text-slate-600 uppercase tracking-wider block mb-1">
+                                                {pm.methodName} ({pm.currency || 'USD'})
+                                            </label>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-black text-blue-600">{currLabel}</span>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    placeholder="0.00"
+                                                    className="flex-1 bg-gray-50 border border-gray-200 focus:border-blue-500 rounded-lg text-sm font-black py-2 px-3 outline-none text-slate-900"
+                                                    value={pm.amount || ''}
+                                                    onChange={(e) => updateMethodAmount(pm.methodName, e.target.value)}
+                                                    min="0"
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                <div className={`text-center py-2 rounded-xl font-black text-[10px] uppercase tracking-wider ${Math.abs(remaining) < 0.01 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                                    {Math.abs(remaining) < 0.01 ? '✅ Montos Correctos' : `⚠️ Falta: $${remaining.toFixed(2)} USD`}
+                                </div>
+                            </div>
+                        )}
+
                         <button
-                            disabled={isProcessing || cart.length === 0 || !paymentMethod}
+                            disabled={isProcessing || cart.length === 0 || selectedMethods.length === 0}
                             onClick={handleSale}
-                            className={`w-full py-5 md:py-6 rounded-[24px] md:rounded-[28px] font-black text-sm md:text-base uppercase tracking-[0.2em] md:tracking-[0.3em] transition-all transform active:scale-95 shadow-xl hover:-translate-y-1 mt-2 text-center flex justify-center items-center ${isProcessing || cart.length === 0 || !paymentMethod
+                            className={`w-full py-5 md:py-6 rounded-[24px] md:rounded-[28px] font-black text-sm md:text-base uppercase tracking-[0.2em] md:tracking-[0.3em] transition-all transform active:scale-95 shadow-xl hover:-translate-y-1 mt-2 text-center flex justify-center items-center ${isProcessing || cart.length === 0 || selectedMethods.length === 0
                                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                 : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200 ring-4 ring-blue-600/10'
                                 }`}
                         >
-                            {isProcessing ? '⏳ PROCESANDO...' : (paymentMethod ? `🛒 FACTURAR VENTA` : '⚠️ SELECCIONA PAGO')}
+                            {isProcessing ? '⏳ PROCESANDO...' : (selectedMethods.length > 0 ? `🛒 FACTURAR VENTA` : '⚠️ SELECCIONA PAGO')}
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* Float cart button for mobile when cart has items but panel is hidden */}
+            {/* Float cart button for mobile */}
             {!showCartMobile && cart.length > 0 && (
                 <button
                     onClick={() => setShowCartMobile(true)}

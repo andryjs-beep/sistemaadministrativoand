@@ -26,7 +26,7 @@ export async function POST(req) {
     await dbConnect();
     try {
         const body = await req.json();
-        const { items, paymentMethod, customerId, accountNumber, userId } = body;
+        const { items, paymentMethod, customerId, accountNumber, userId, payments } = body;
 
         if (!userId) {
             return NextResponse.json({ error: 'UserId requerido para procesar venta' }, { status: 400 });
@@ -61,10 +61,10 @@ export async function POST(req) {
                 isWholesale = true;
             }
 
-            // Aplicar descuento manual
-            const discountPercent = parseFloat(item.discountPercent) || 0;
-            if (discountPercent > 0) {
-                unitPrice = unitPrice * (1 - (discountPercent / 100));
+            // Aplicar descuento por valor (USD) si existe
+            const discountValue = parseFloat(item.discountValue) || 0;
+            if (discountValue > 0) {
+                unitPrice = Math.max(0, unitPrice - discountValue);
             }
 
             const itemSubtotalUsd = unitPrice * item.quantity;
@@ -81,7 +81,7 @@ export async function POST(req) {
                 subtotalUsd: itemSubtotalUsd,
                 subtotalBs: itemSubtotalBs,
                 wholesaleApplied: isWholesale,
-                discountPercent: discountPercent,
+                discountValue: discountValue,
                 profitUsd: itemProfit
             });
 
@@ -93,21 +93,26 @@ export async function POST(req) {
             await product.save();
         }
 
-        // 4. Crear la venta
+        // 4. Determinar método de pago principal (compatibilidad) y multi-pagos
+        const primaryMethod = paymentMethod || (payments && payments.length > 0 ? payments.map(p => p.method).join(' + ') : 'Sin Método');
+
+        // 5. Crear la venta
         const saleId = `VEN-${Date.now()}`;
         const newSale = await Sale.create({
             saleId,
+            userId: userId || null,
             customerId: customerId || null,
             cashSessionId: activeSession._id,
             items: processedItems,
             totalUsd,
             totalBs,
-            paymentMethod,
+            paymentMethod: primaryMethod,
             accountNumber,
+            payments: payments || [],
             date: new Date(),
         });
 
-        // 5. Actualizar totales de la sesión de caja
+        // 6. Actualizar totales de la sesión de caja
         activeSession.totalSalesUsd += totalUsd;
         activeSession.totalSalesBs += totalBs;
         activeSession.salesCount += 1;

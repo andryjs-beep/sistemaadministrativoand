@@ -16,6 +16,7 @@ const NAV_ITEMS = [
     { href: '/cotizaciones', icon: '📋', label: 'Cotizaciones', roles: ['admin', 'vendedor'] },
     { href: '/reportes', icon: '📊', label: 'Reportes', roles: ['admin'] },
     { href: '/usuarios', icon: '🛡️', label: 'Usuarios', roles: ['admin'] },
+    { href: '/empresa', icon: '🏢', label: 'Empresa', roles: ['admin'] },
 ];
 
 export default function Sidebar() {
