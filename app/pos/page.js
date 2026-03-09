@@ -16,6 +16,7 @@ export default function PosPage() {
     const [lastSale, setLastSale] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [showCartMobile, setShowCartMobile] = useState(false);
+    const [isCredit, setIsCredit] = useState(false);
 
     useEffect(() => {
         fetchProducts();
@@ -153,35 +154,41 @@ export default function PosPage() {
 
     const handleSale = async () => {
         if (cart.length === 0) return alert('El carrito está vacío');
-        if (selectedMethods.length === 0) return alert('Debes seleccionar al menos un método de pago');
 
-        if (selectedMethods.length === 1 && selectedMethods[0].amount === 0) {
-            // Single method with no amount assigned - auto-fill
-            const isBs = (selectedMethods[0].currency || '').toUpperCase().includes('BS');
-            selectedMethods[0].amount = isBs ? totalBs : totalUsd;
+        // Ventas a crédito requieren cliente obligatoriamente
+        if (isCredit && !selectedCustomerId) {
+            return alert('Para ventas a crédito DEBES seleccionar un cliente específico.');
         }
 
-        if (selectedMethods.length > 1 && Math.abs(remaining) > 0.01) {
-            return alert(`Los montos asignados no cubren el total. Falta: $${remaining.toFixed(2)} USD`);
+        // Si es de contado, debe cubrir el total
+        if (!isCredit) {
+            if (selectedMethods.length === 0) return alert('Debes seleccionar al menos un método de pago');
+
+            if (selectedMethods.length === 1 && selectedMethods[0].amount === 0) {
+                const isBs = (selectedMethods[0].currency || '').toUpperCase().includes('BS');
+                selectedMethods[0].amount = isBs ? totalBs : totalUsd;
+            }
+
+            if (Math.abs(remaining) > 0.01) {
+                return alert(`Para venta de contado el monto debe ser exacto. Falta: $${remaining.toFixed(2)} USD`);
+            }
         }
 
         setIsProcessing(true);
 
         try {
             const storedUser = JSON.parse(localStorage.getItem('user'));
-            const paymentsPayload = selectedMethods.map(p => {
-                const isBs = (p.currency || '').toUpperCase().includes('BS');
-                return {
-                    method: p.methodName,
-                    currency: p.currency,
-                    amountUsd: isBs ? p.amount / bcvRate : p.amount,
-                    amountBs: isBs ? p.amount : p.amount * bcvRate
-                };
-            });
-
-            const primaryMethod = selectedMethods.length === 1
-                ? selectedMethods[0].methodName
-                : selectedMethods.map(p => p.methodName).join(' + ');
+            const paymentsPayload = selectedMethods
+                .filter(p => p.amount > 0)
+                .map(p => {
+                    const isBs = (p.currency || '').toUpperCase().includes('BS');
+                    return {
+                        method: p.methodName,
+                        currency: p.currency,
+                        amountUsd: isBs ? p.amount / bcvRate : p.amount,
+                        amountBs: isBs ? p.amount : p.amount * bcvRate
+                    };
+                });
 
             const res = await fetch('/api/sales', {
                 method: 'POST',
@@ -192,10 +199,10 @@ export default function PosPage() {
                         quantity: item.quantity,
                         discountValue: item.discountValue
                     })),
-                    paymentMethod: primaryMethod,
                     payments: paymentsPayload,
                     customerId: selectedCustomerId,
-                    userId: storedUser?._id
+                    userId: storedUser?._id,
+                    isCredit: isCredit
                 })
             });
 
@@ -206,8 +213,9 @@ export default function PosPage() {
                 setSelectedCustomerId('');
                 setCustomerSearch('');
                 setSelectedMethods([]);
+                setIsCredit(false);
                 fetchProducts();
-                alert('¡Venta completada con éxito!');
+                alert(isCredit ? 'Venta a crédito registrada con éxito' : '¡Venta completada con éxito!');
             } else {
                 const err = await res.json();
                 alert(`Error: ${err.error || 'No se pudo procesar la venta'}`);
@@ -237,22 +245,39 @@ export default function PosPage() {
                 <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
                     <h1 className="text-xl font-black text-slate-800 uppercase tracking-tighter w-full text-center md:text-left">Ventas POS</h1>
 
+                    <div className="flex bg-gray-100 p-1 rounded-xl">
+                        <button
+                            onClick={() => setIsCredit(false)}
+                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${!isCredit ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400'}`}
+                        >
+                            Contado
+                        </button>
+                        <button
+                            onClick={() => setIsCredit(true)}
+                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${isCredit ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}
+                        >
+                            Crédito
+                        </button>
+                    </div>
+
                     <div className="relative w-full md:w-64">
                         <input
                             type="text"
                             placeholder="Buscar Cliente (Nombre/ID/Tlf)..."
-                            className="w-full bg-gray-100 border-none rounded-xl px-4 py-2.5 font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                            className={`w-full border-2 rounded-xl px-4 py-2.5 font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 text-xs transition-all ${selectedCustomerId ? 'bg-blue-50 border-blue-200' : 'bg-gray-100 border-transparent'}`}
                             value={customerSearch}
                             onChange={(e) => setCustomerSearch(e.target.value)}
                         />
                         {customerSearch && (
                             <div className="absolute top-full left-0 w-full bg-white shadow-2xl rounded-xl mt-1 max-h-48 overflow-y-auto z-[60] border border-gray-100">
-                                <button
-                                    className="w-full text-left p-3 hover:bg-gray-50 text-[10px] font-black uppercase text-blue-600 border-b"
-                                    onClick={() => { setSelectedCustomerId(''); setCustomerSearch(''); }}
-                                >
-                                    👤 Consumidor Final
-                                </button>
+                                {!isCredit && (
+                                    <button
+                                        className="w-full text-left p-3 hover:bg-gray-50 text-[10px] font-black uppercase text-blue-600 border-b"
+                                        onClick={() => { setSelectedCustomerId(''); setCustomerSearch(''); }}
+                                    >
+                                        👤 Consumidor Final
+                                    </button>
+                                )}
                                 {filteredCustomers.map(c => (
                                     <button
                                         key={c._id}
