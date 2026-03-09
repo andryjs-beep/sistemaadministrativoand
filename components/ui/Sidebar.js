@@ -24,16 +24,29 @@ export default function Sidebar() {
     const pathname = usePathname();
 
     useEffect(() => {
-        const stored = localStorage.getItem('user');
-        if (stored) setUser(JSON.parse(stored));
+        try {
+            const stored = localStorage.getItem('user');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                // Asegurar que el rol sea siempre minúscula para la comparación
+                if (parsed && parsed.role) {
+                    parsed.role = parsed.role.toLowerCase();
+                    setUser(parsed);
+                }
+            }
+        } catch (e) {
+            console.error('Error parsing user session', e);
+        }
     }, [pathname]);
 
     // Hide on login page
     if (pathname === '/login') return null;
 
-    const filteredItems = NAV_ITEMS.filter(item =>
-        !user || item.roles.includes(user.role)
-    );
+    const filteredItems = NAV_ITEMS.filter(item => {
+        if (!user) return true;
+        const userRole = (user.role || 'vendedor').toLowerCase();
+        return item.roles.includes(userRole);
+    });
 
     return (
         <>
