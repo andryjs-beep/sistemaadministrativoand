@@ -113,7 +113,7 @@ export default function UsuariosPage() {
                                         </td>
                                         <td className="p-6 text-center">
                                             {u.username !== 'admin' ? (
-                                                <button onClick={() => deleteUser(u._id)} className="p-3 text-red-200 hover:text-red-500 transition">🗑️</button>
+                                                <button type="button" onClick={() => deleteUser(u._id)} className="p-3 text-red-200 hover:text-red-500 transition">🗑️</button>
                                             ) : (
                                                 <span className="text-[10px] font-black text-gray-300 uppercase">Fijo</span>
                                             )}
