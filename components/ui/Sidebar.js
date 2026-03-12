@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
+import TasaWidget from '@/components/TasaWidget';
 
 const NAV_ITEMS = [
     { href: '/dashboard', icon: '🏠', label: 'Dashboard', roles: ['admin', 'vendedor'] },
@@ -76,25 +77,32 @@ export default function Sidebar() {
                 ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
             `}>
                 {/* Logo */}
-                <div className="p-6 border-b border-white/5 shrink-0">
-                    <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-sm font-black text-white shadow-lg">SA</div>
+                <div className="p-4 pb-2 border-b border-white/5 shrink-0">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-[10px] font-black text-white shadow-lg">SA</div>
                         <div>
-                            <p className="font-black text-white text-sm tracking-tight">SIS.ADMI</p>
-                            <p className="text-[9px] font-bold text-gray-500 uppercase tracking-[0.2em]">Sistema Administrativo</p>
+                            <p className="font-black text-white text-xs tracking-tight">SIS.ADMI</p>
+                            <p className="text-[7px] font-bold text-gray-500 uppercase tracking-[0.2em]">Sistema Administrativo</p>
                         </div>
                     </div>
                     {user && (
-                        <div className="mt-4 p-3 bg-white/5 rounded-2xl">
-                            <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Usuario Conectado</p>
-                            <p className="text-xs font-bold text-white uppercase mt-0.5 truncate">{user.username}</p>
-                            <span className="text-[8px] font-black bg-white/10 text-gray-400 px-2 py-0.5 rounded-full mt-1 inline-block uppercase italic">{user.role}</span>
+                        <div className="mt-3 p-2 bg-white/5 rounded-xl border border-white/5">
+                            <p className="text-[8px] font-black text-blue-500 uppercase tracking-widest leading-none">Usuario Conectado</p>
+                            <div className="flex items-center justify-between mt-1">
+                                <p className="text-xs font-black text-white uppercase truncate flex-1">{user.username}</p>
+                                <span className="text-[8px] font-black bg-white/10 text-gray-400 px-2 py-0.5 rounded-full uppercase italic shrink-0 ml-2">{user.role}</span>
+                            </div>
                         </div>
                     )}
                 </div>
 
+                {/* BCV Rates Widget */}
+                <div className="px-3 py-2">
+                    <TasaWidget />
+                </div>
+
                 {/* Nav */}
-                <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
+                <nav className="flex-1 overflow-y-auto p-2 space-y-0.5 custom-scrollbar">
                     {filteredItems.map(({ href, icon, label }) => {
                         const active = pathname === href || pathname.startsWith(href + '/');
                         return (
@@ -103,12 +111,12 @@ export default function Sidebar() {
                                 href={href}
                                 onClick={() => setIsOpen(false)}
                                 className={`
-                                    flex items-center gap-3 px-4 py-3 rounded-2xl transition-all group
+                                    flex items-center gap-3 px-3 py-2 rounded-xl transition-all group
                                     ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-gray-400 hover:bg-white/5 hover:text-white'}
                                 `}
                             >
-                                <span className="text-base">{icon}</span>
-                                <span className="font-bold text-sm uppercase tracking-wide">{label}</span>
+                                <span className="text-lg">{icon}</span>
+                                <span className="font-black text-[13px] uppercase tracking-wide">{label}</span>
                                 {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/60"></span>}
                             </a>
                         );

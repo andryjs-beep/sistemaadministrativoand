@@ -4,15 +4,21 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-// GET active session for a specific user
+// GET active session or history for a specific user
 export async function GET(req) {
     await dbConnect();
     try {
         const { searchParams } = new URL(req.url);
         const userId = searchParams.get('userId');
+        const history = searchParams.get('history') === 'true';
 
         if (!userId) {
             return NextResponse.json({ error: 'UserId requerido' }, { status: 400 });
+        }
+
+        if (history) {
+            const sessions = await CashSession.find({ openedBy: userId, status: 'closed' }).sort({ closedAt: -1 }).limit(50);
+            return NextResponse.json(sessions);
         }
 
         const session = await CashSession.findOne({ status: 'open', openedBy: userId }).sort({ openedAt: -1 });
@@ -27,13 +33,12 @@ export async function POST(req) {
     await dbConnect();
     try {
         const body = await req.json();
-        const { userId, openingBalance, notes } = body;
+        const { userId, openingBalance, notes, openingDetails } = body;
 
         if (!userId) {
             return NextResponse.json({ error: 'UserId requerido' }, { status: 400 });
         }
 
-        // Check if THIS user already has an open session
         const existing = await CashSession.findOne({ status: 'open', openedBy: userId });
         if (existing) {
             return NextResponse.json({ error: 'Ya tienes una caja abierta.' }, { status: 400 });
@@ -45,6 +50,11 @@ export async function POST(req) {
             sessionId,
             openedBy: userId,
             openingBalance: parseFloat(openingBalance) || 0,
+            openingDetails: {
+                usdCash: parseFloat(openingDetails?.usdCash) || 0,
+                bsCash: parseFloat(openingDetails?.bsCash) || 0,
+                bsTransfer: parseFloat(openingDetails?.bsTransfer) || 0
+            },
             notes: notes || '',
             status: 'open',
         });
@@ -60,7 +70,7 @@ export async function PUT(req) {
     await dbConnect();
     try {
         const body = await req.json();
-        const { id, userId, closingBalance, notes } = body;
+        const { id, userId, closingBalance, notes, closingDetails } = body;
 
         const session = await CashSession.findOne({ _id: id, openedBy: userId });
         if (!session) {
@@ -70,6 +80,11 @@ export async function PUT(req) {
         session.status = 'closed';
         session.closedAt = new Date();
         session.closingBalance = parseFloat(closingBalance) || 0;
+        session.closingDetails = {
+            usdCash: parseFloat(closingDetails?.usdCash) || 0,
+            bsCash: parseFloat(closingDetails?.bsCash) || 0,
+            bsTransfer: parseFloat(closingDetails?.bsTransfer) || 0
+        };
         session.notes = notes;
         await session.save();
 

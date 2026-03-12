@@ -13,7 +13,13 @@ export default function DashboardPage() {
         totalUsdDay: 0,
         totalExpensesUsd: 0,
         totalProfit: 0,
-        grossMarginPct: 0
+        grossMarginPct: 0,
+        collectedUsd: 0,
+        collectedBs: 0,
+        spentUsd: 0,
+        spentBs: 0,
+        trueNetUsd: 0,
+        trueNetBs: 0
     });
     const [rates, setRates] = useState({ usd: 36.5, eur: 39.8 });
     const [recentSales, setRecentSales] = useState([]);
@@ -21,11 +27,17 @@ export default function DashboardPage() {
     const [expenseBreak, setExpenseBreak] = useState({});
     const [isEditingRate, setIsEditingRate] = useState(null);
     const [tempRate, setTempRate] = useState('');
+    const [tempPercentage, setTempPercentage] = useState(0);
 
     useEffect(() => {
-        fetchStats();
-        fetchBcv();
         fetchTodayReport();
+        fetchBcv();
+        const interval = setInterval(fetchTodayReport, 60000);
+        const rateInterval = setInterval(fetchBcv, 60 * 60 * 1000); // 60 minutos
+        return () => {
+            clearInterval(interval);
+            clearInterval(rateInterval);
+        };
     }, []);
 
     const fetchStats = async () => {
@@ -55,14 +67,27 @@ export default function DashboardPage() {
     const fetchTodayReport = async () => {
         try {
             const storedUser = JSON.parse(localStorage.getItem('user'));
-            const start = new Date(); start.setHours(0, 0, 0, 0);
-            const end = new Date(); end.setHours(23, 59, 59, 999);
+            const userId = storedUser?._id;
 
-            let url = `/api/reports?type=daily&dateFrom=${start.toISOString()}&dateTo=${end.toISOString()}`;
+            // 1. Intentar obtener la sesión de caja activa para este usuario
+            const cashRes = await fetch(userId ? `/api/cash?userId=${userId}` : '/api/cash');
+            const activeSession = await cashRes.json();
 
-            // Si es vendedor, solo mostrar sus propias ventas
+            let url = '/api/reports?type=daily';
+
+            if (activeSession && activeSession._id) {
+                // Si hay una sesión abierta, mostramos los datos de esa sesión exclusivamente
+                url = `/api/reports?type=session&sessionId=${activeSession._id}`;
+            } else {
+                // Si no hay sesión, mostramos el reporte del día actual como respaldo
+                const start = new Date(); start.setHours(0, 0, 0, 0);
+                const end = new Date(); end.setHours(23, 59, 59, 999);
+                url += `&dateFrom=${start.toISOString()}&dateTo=${end.toISOString()}`;
+            }
+
+            // Si es vendedor, filtrar por su ID (aunque el reporte de sesión ya suele ser específico)
             if (storedUser && storedUser.role === 'vendedor') {
-                url += `&userId=${storedUser._id}`;
+                url += `&userId=${userId}`;
             }
 
             const res = await fetch(url);
@@ -75,7 +100,13 @@ export default function DashboardPage() {
                     totalUsdDay: data.summary.totalSalesUsd || 0,
                     totalExpensesUsd: data.summary.totalExpensesUsd || 0,
                     totalProfit: data.summary.totalProfit || 0,
-                    grossMarginPct: data.summary.grossMarginPct || 0
+                    grossMarginPct: data.summary.grossMarginPct || 0,
+                    collectedUsd: data.summary.collectedUsd || 0,
+                    collectedBs: data.summary.collectedBs || 0,
+                    spentUsd: data.summary.spentUsd || 0,
+                    spentBs: data.summary.spentBs || 0,
+                    trueNetUsd: data.summary.trueNetUsd || 0,
+                    trueNetBs: data.summary.trueNetBs || 0
                 }));
             }
 
@@ -83,16 +114,20 @@ export default function DashboardPage() {
             setExpenseBreak(data?.expenseBreakdown || {});
             setRecentSales((data?.sales || []).slice(0, 5));
         } catch (e) {
-            console.error('Error fetching today report', e);
+            console.error('Error fetching dashboard report', e);
         }
     };
 
     const fetchBcv = async () => {
         try {
             const res = await fetch('/api/bcv');
-            const data = await res.json();
-            if (data.usd && data.eur) {
-                setRates({ usd: data.usd.value, eur: data.eur.value });
+            const json = await res.json();
+            if (json.ok && json.data) {
+                setRates({
+                    usd: json.data.USD,
+                    eur: json.data.EUR,
+                    percentage: json.data.percentage || 0
+                });
             }
         } catch (e) {
             console.error('Error fetching BCV', e);
@@ -100,6 +135,23 @@ export default function DashboardPage() {
     };
 
     const handleSaveRate = async () => {
+        if (isEditingRate === 'PERCENT') {
+            if (isNaN(tempPercentage)) return;
+            try {
+                const res = await fetch('/api/bcv', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'USD', percentage: tempPercentage })
+                });
+                if (res.ok) {
+                    fetchBcv();
+                    setIsEditingRate(null);
+                    alert('Porcentaje actualizado correctamente');
+                }
+            } catch (e) { alert('Error al guardar porcentaje'); }
+            return;
+        }
+
         if (!tempRate || isNaN(tempRate)) return;
         try {
             const res = await fetch('/api/bcv', {
@@ -150,21 +202,41 @@ export default function DashboardPage() {
                         </div>
                         <button onClick={() => { setIsEditingRate('USD'); setTempRate(rates.usd); }} className="p-2 hover:bg-gray-50 rounded-lg text-lg">✏️</button>
                     </div>
+                    {/* % Ajuste */}
+                    <div className="flex-1 min-w-[180px] bg-white px-6 py-4 rounded-3xl shadow-sm border-2 border-transparent hover:border-orange-100 transition-all flex items-center justify-between gap-4 border-l-4 border-l-orange-500">
+                        <div>
+                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Ajuste BS (%)</p>
+                            <p className="text-xl font-black text-orange-600">+{rates.percentage}%</p>
+                        </div>
+                        <button onClick={() => { setIsEditingRate('PERCENT'); setTempPercentage(rates.percentage); }} className="p-2 hover:bg-gray-50 rounded-lg text-lg">⚙️</button>
+                    </div>
                 </div>
             </header>
 
-            {/* Modal Edición Tasa */}
+            {/* Modal Edición Tasa / Porcentaje */}
             {isEditingRate && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <div className="bg-white p-8 rounded-[40px] shadow-2xl max-w-sm w-full animate-in zoom-in duration-200">
-                        <h3 className="font-black text-xl mb-6 uppercase tracking-tighter">Editar Tasa {isEditingRate}</h3>
+                        <h3 className="font-black text-xl mb-6 uppercase tracking-tighter">
+                            {isEditingRate === 'PERCENT' ? 'Ajuste Porcentual BS' : `Editar Tasa ${isEditingRate}`}
+                        </h3>
                         <div className="space-y-4">
-                            <input
-                                type="number" step="0.01"
-                                className="w-full p-4 bg-gray-100 rounded-2xl border-none outline-none font-bold text-lg text-slate-800"
-                                value={tempRate} onChange={e => setTempRate(e.target.value)}
-                                autoFocus
-                            />
+                            <div className="relative">
+                                <input
+                                    type="number" step={isEditingRate === 'PERCENT' ? "1" : "0.01"}
+                                    className="w-full p-4 bg-gray-100 rounded-2xl border-none outline-none font-bold text-lg text-slate-800"
+                                    value={isEditingRate === 'PERCENT' ? tempPercentage : tempRate}
+                                    onChange={e => isEditingRate === 'PERCENT' ? setTempPercentage(e.target.value) : setTempRate(e.target.value)}
+                                    autoFocus
+                                />
+                                {isEditingRate === 'PERCENT' && <span className="absolute right-4 top-1/2 -translate-y-1/2 font-black text-gray-400">%</span>}
+                            </div>
+                            {isEditingRate === 'PERCENT' && (
+                                <p className="text-[10px] font-bold text-gray-400 uppercase italic">
+                                    Tasa Actual: {rates.usd} <br />
+                                    Nueva Tasa Ajustada: {(rates.usd * (1 + parseFloat(tempPercentage || 0) / 100)).toFixed(2)}
+                                </p>
+                            )}
                             <div className="flex gap-3">
                                 <button onClick={handleSaveRate} className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl uppercase tracking-widest text-xs shadow-lg shadow-blue-100">Guardar</button>
                                 <button onClick={() => setIsEditingRate(null)} className="flex-1 py-4 bg-gray-50 text-gray-400 font-black rounded-2xl uppercase tracking-widest text-xs">Cancelar</button>
@@ -196,17 +268,28 @@ export default function DashboardPage() {
             {/* ===== TOTALES DEL DÍA ===== */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-[32px] text-white shadow-xl col-span-2">
-                    <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-1">Total Ventas Brutas ($)</p>
-                    <p className="text-3xl font-black tracking-tighter">${stats.totalUsdDay.toFixed(2)}</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-1">Ingresos Brutos Recaudados</p>
+                    <div className="flex justify-between items-end mt-2">
+                        <div>
+                            <p className="text-3xl font-black tracking-tighter text-emerald-300">${stats.collectedUsd.toFixed(2)}</p>
+                            <p className="text-[10px] uppercase tracking-widest opacity-70">En Divisas</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-2xl font-black tracking-tighter text-orange-300">Bs. {stats.collectedBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
+                            <p className="text-[10px] uppercase tracking-widest opacity-70">En Bolívares</p>
+                        </div>
+                    </div>
                 </div>
-                <div className="bg-red-50 p-6 rounded-[32px] border border-red-100">
+                <div className="bg-red-50 p-6 rounded-[32px] border border-red-100 flex flex-col justify-center">
                     <p className="text-[9px] font-black text-red-400 uppercase tracking-widest mb-1">Gastos / Egresos</p>
-                    <p className="text-2xl font-black text-red-600">${stats.totalExpensesUsd.toFixed(2)}</p>
+                    <p className="text-xl font-black text-red-600">${stats.spentUsd.toFixed(2)} <span className="text-[10px] text-red-400">USD</span></p>
+                    <p className="text-lg font-black text-red-500 mt-1">Bs. {stats.spentBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
                 </div>
-                <div className="bg-emerald-50 p-6 rounded-[32px] border border-emerald-100">
-                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-1">Utilidad Neta</p>
-                    <p className="text-2xl font-black text-emerald-600">${stats.totalProfit.toFixed(2)}</p>
-                    <p className="text-[8px] font-bold text-emerald-400">+{stats.grossMarginPct}% margen</p>
+                <div className="bg-emerald-50 p-6 rounded-[32px] border border-emerald-100 flex flex-col justify-center relative">
+                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-1">Caja Neta Diaria</p>
+                    <p className="text-xl font-black text-emerald-600">${stats.trueNetUsd.toFixed(2)} <span className="text-[10px] text-emerald-400">USD</span></p>
+                    <p className="text-lg font-black text-emerald-500 mt-1">Bs. {stats.trueNetBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
+                    <p className="absolute top-4 right-4 text-[8px] font-bold text-emerald-400 px-2 py-1 bg-emerald-100 rounded-full">+{stats.grossMarginPct}% margen</p>
                 </div>
             </div>
 
@@ -242,16 +325,24 @@ export default function DashboardPage() {
                 <div className="bg-white p-6 md:p-8 rounded-[40px] border border-gray-100 shadow-sm mb-8">
                     <h3 className="font-black text-red-600 uppercase text-xs tracking-widest mb-6 border-b pb-4">📤 Egresos por Método de Pago</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {Object.entries(expenseBreak).map(([method, info]) => (
-                            <div key={method} className="flex items-center gap-3 p-4 rounded-2xl bg-red-50/50">
-                                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 bg-red-100 text-red-500">📤</div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-black text-slate-700 uppercase truncate">{method}</p>
-                                    <p className="text-[8px] font-bold text-gray-400">{info.count} egresos</p>
+                        {Object.entries(expenseBreak).map(([method, info]) => {
+                            const isBs = info.currency && info.currency.startsWith('BS');
+                            return (
+                                <div key={method} className="flex items-center gap-3 p-4 rounded-2xl bg-red-50/50">
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${isBs ? 'bg-orange-100 text-orange-500' : 'bg-red-100 text-red-500'}`}>
+                                        {isBs ? '🇻🇪' : '📤'}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-black text-slate-700 uppercase truncate">{method}</p>
+                                        <p className="text-[8px] font-bold text-gray-400">{info.count} egresos</p>
+                                    </div>
+                                    <p className={`text-base font-black ${isBs ? 'text-orange-500' : 'text-red-600'}`}>
+                                        {isBs ? 'Bs. ' : '$'}
+                                        {(info.mainTotal || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
                                 </div>
-                                <p className="text-base font-black text-red-600">${(info.totalUsd || 0).toFixed(2)}</p>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}

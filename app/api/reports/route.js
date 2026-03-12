@@ -1,5 +1,5 @@
 import dbConnect from '@/lib/db';
-import { Sale, Expense, CashSession, PaymentMethod } from '@/lib/models';
+import { Sale, Expense, CashSession, PaymentMethod, InternalExchange } from '@/lib/models';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -46,15 +46,17 @@ export async function GET(req) {
             // expenseQuery.userId = userId; 
         }
 
-        const [sales, expenses, cashSessions, allPaymentMethods] = await Promise.all([
-            Sale.find({ ...saleQuery, status: 'completed' })
+        const [sales, expenses, cashSessions, allPaymentMethods, exchanges] = await Promise.all([
+            Sale.find(saleQuery)
                 .populate('items.productId', 'name code costUsd')
+                .populate('customerId', 'name phone idNumber')
                 .sort({ date: -1 }),
             Expense.find(expenseQuery)
                 .populate('providerId', 'name rif')
                 .sort({ date: -1 }),
             CashSession.find({}).sort({ openedAt: -1 }).limit(20),
             PaymentMethod.find({}),
+            InternalExchange.find(type === 'session' && sessionId ? { sessionId } : expenseQuery) // use same time query for exchanges
         ]);
 
         // Aggregate totals
@@ -87,29 +89,39 @@ export async function GET(req) {
 
         // Payment method breakdown with currency awareness
         const paymentBreakdown = {};
+        let collectedUsd = 0;
+        let collectedBs = 0;
+
         sales.forEach(s => {
-            const methodName = s.paymentMethod || 'Otro';
-            const methodConfig = allPaymentMethods.find(m => m.name === methodName);
-            const currency = methodConfig?.currency || 'USD'; // default to USD if unknown
+            const processPayment = (methodName, amountUsd, amountBs) => {
+                const methodConfig = allPaymentMethods.find(m => m.name === methodName);
+                const currency = methodConfig?.currency || 'USD';
 
-            if (!paymentBreakdown[methodName]) {
-                paymentBreakdown[methodName] = {
-                    count: 0,
-                    totalUsd: 0,
-                    totalBs: 0,
-                    currency,
-                    mainTotal: 0 // This will be in the method's currency
-                };
-            }
-            paymentBreakdown[methodName].count++;
-            paymentBreakdown[methodName].totalUsd += s.totalUsd || 0;
-            paymentBreakdown[methodName].totalBs += s.totalBs || 0;
+                if (!paymentBreakdown[methodName]) {
+                    paymentBreakdown[methodName] = { count: 0, totalUsd: 0, totalBs: 0, currency, mainTotal: 0 };
+                }
 
-            // Increment the sum in the specific currency of the method
-            if (currency.startsWith('BS')) {
-                paymentBreakdown[methodName].mainTotal += s.totalBs || 0;
+                paymentBreakdown[methodName].count++;
+                paymentBreakdown[methodName].totalUsd += amountUsd || 0;
+                paymentBreakdown[methodName].totalBs += amountBs || 0;
+
+                if (currency.toUpperCase().includes('BS')) {
+                    paymentBreakdown[methodName].mainTotal += amountBs || 0;
+                    collectedBs += amountBs || 0;
+                } else {
+                    paymentBreakdown[methodName].mainTotal += amountUsd || 0;
+                    collectedUsd += amountUsd || 0;
+                }
+            };
+
+            if (s.payments && s.payments.length > 0) {
+                // Multi-payment or detailed payments array
+                s.payments.forEach(p => {
+                    processPayment(p.method || 'Otro', parseFloat(p.amountUsd || 0), parseFloat(p.amountBs || 0));
+                });
             } else {
-                paymentBreakdown[methodName].mainTotal += s.totalUsd || 0;
+                // Legacy support for single payment method on older sales
+                processPayment(s.paymentMethod || 'Otro', s.totalUsd || 0, s.totalBs || 0);
             }
         });
 
@@ -130,16 +142,110 @@ export async function GET(req) {
         });
         const topProducts = Object.values(productMap).sort((a, b) => b.qty - a.qty).slice(0, 10);
 
-        // Expense breakdown by payment method
+        // Expense breakdown and Net Calculation per Payment Method
         const expenseBreakdown = {};
+        let spentUsd = 0;
+        let spentBs = 0;
+
         expenses.forEach(exp => {
             const methodName = exp.paymentMethod || 'Otro';
+            const methodConfig = allPaymentMethods.find(m => m.name === methodName);
+            const currency = methodConfig?.currency || 'USD';
+            const isBs = currency.toUpperCase().includes('BS');
+
             if (!expenseBreakdown[methodName]) {
-                expenseBreakdown[methodName] = { count: 0, totalUsd: 0, totalBs: 0 };
+                expenseBreakdown[methodName] = { count: 0, totalUsd: 0, totalBs: 0, currency, mainTotal: 0 };
             }
             expenseBreakdown[methodName].count++;
-            expenseBreakdown[methodName].totalUsd += exp.amountUsd || 0;
-            expenseBreakdown[methodName].totalBs += exp.amountBs || 0;
+
+            // Valor literal del egreso
+            const expUsd = exp.amountUsd || 0;
+            const expBs = exp.amountBs || 0;
+
+            expenseBreakdown[methodName].totalUsd += expUsd;
+            expenseBreakdown[methodName].totalBs += expBs;
+
+            if (isBs) {
+                expenseBreakdown[methodName].mainTotal += expBs;
+                spentBs += expBs;
+            } else {
+                expenseBreakdown[methodName].mainTotal += expUsd;
+                spentUsd += expUsd;
+            }
+
+            // Subtract from paymentBreakdown to show Net per method
+            if (paymentBreakdown[methodName]) {
+                paymentBreakdown[methodName].totalUsd -= expUsd;
+                paymentBreakdown[methodName].totalBs -= expBs;
+                paymentBreakdown[methodName].mainTotal -= (isBs ? expBs : expUsd);
+            }
+        });
+
+        // Calculate Net Impact of Exchanges
+        let exchangeNetUsd = 0;
+        let exchangeNetBs = 0;
+
+        const getMethodNameForEnum = (enumVal) => {
+            const up = enumVal?.toUpperCase();
+            if (up === 'USD_CASH') {
+                return allPaymentMethods.find(m => m.currency === 'USD' && m.name.toUpperCase().includes('EFECTIVO'))?.name || 'DIVISA EN EFECTIVO';
+            }
+            if (up === 'BS_CASH') {
+                return allPaymentMethods.find(m => m.currency.startsWith('BS') && m.name.toUpperCase().includes('EFECTIVO'))?.name || 'EFECTIVO BS';
+            }
+            if (up === 'BS_TRANSFER') {
+                // Try to find Pago Móvil or Transferencia
+                return allPaymentMethods.find(m =>
+                    m.currency.startsWith('BS') &&
+                    (m.name.toUpperCase().includes('PAGO MÓVIL') || m.name.toUpperCase().includes('PAGO MOVIL') || m.name.toUpperCase().includes('TRANSFERENCIA'))
+                )?.name || 'PAGO MOVIL BS';
+            }
+            return 'Otro';
+        };
+
+        exchanges.forEach(exc => {
+            if (exc.status === 'cancelled') return; // Skip cancelled exchanges
+
+            const fromName = getMethodNameForEnum(exc.fromCurrency);
+            const toName = getMethodNameForEnum(exc.toCurrency);
+
+            const applyExchange = (methodName, amount, type) => {
+                const methodConfig = allPaymentMethods.find(m => m.name === methodName);
+                const currency = methodConfig?.currency || 'USD';
+                const isBs = currency.toUpperCase().includes('BS');
+
+                if (!paymentBreakdown[methodName]) {
+                    paymentBreakdown[methodName] = { count: 0, totalUsd: 0, totalBs: 0, currency, mainTotal: 0 };
+                }
+
+                if (type === 'OUT') {
+                    if (isBs) {
+                        paymentBreakdown[methodName].totalBs -= amount;
+                        paymentBreakdown[methodName].mainTotal -= amount;
+                    } else {
+                        paymentBreakdown[methodName].totalUsd -= amount;
+                        paymentBreakdown[methodName].mainTotal -= amount;
+                    }
+                } else {
+                    if (isBs) {
+                        paymentBreakdown[methodName].totalBs += amount;
+                        paymentBreakdown[methodName].mainTotal += amount;
+                    } else {
+                        paymentBreakdown[methodName].totalUsd += amount;
+                        paymentBreakdown[methodName].mainTotal += amount;
+                    }
+                }
+            };
+
+            // Process OUT
+            applyExchange(fromName, exc.fromAmount, 'OUT');
+            if (exc.fromCurrency === 'USD_CASH') exchangeNetUsd -= exc.fromAmount;
+            if (exc.fromCurrency === 'BS_CASH' || exc.fromCurrency === 'BS_TRANSFER') exchangeNetBs -= exc.fromAmount;
+
+            // Process IN
+            applyExchange(toName, exc.toAmount, 'IN');
+            if (exc.toCurrency === 'USD_CASH') exchangeNetUsd += exc.toAmount;
+            if (exc.toCurrency === 'BS_CASH' || exc.toCurrency === 'BS_TRANSFER') exchangeNetBs += exc.toAmount;
         });
 
         return NextResponse.json({
@@ -151,11 +257,19 @@ export async function GET(req) {
                 totalExpensesBs,
                 netUsd,
                 netBs,
+                collectedUsd,
+                collectedBs,
+                spentUsd,
+                spentBs,
+                trueNetUsd: collectedUsd - spentUsd + exchangeNetUsd,
+                trueNetBs: collectedBs - spentBs + exchangeNetBs,
                 totalCostOfGoods,
                 totalProfit,
                 grossMarginPct,
                 wholesaleSalesCount,
                 discountedSalesCount,
+                exchangeNetUsd,
+                exchangeNetBs
             },
             paymentBreakdown,
             expenseBreakdown,
@@ -163,6 +277,7 @@ export async function GET(req) {
             sales,
             expenses,
             cashSessions,
+            exchanges
         });
     } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });

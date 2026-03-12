@@ -1,5 +1,5 @@
 import dbConnect from '@/lib/db';
-import { Sale, Product, CashSession, ExchangeRate } from '@/lib/models';
+import { Sale, Product, CashSession, ExchangeRate, InventoryLog, User } from '@/lib/models';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -55,17 +55,19 @@ export async function POST(req) {
 
             let unitPrice = product.priceUsd;
             let isWholesale = false;
-            if (product.wholesalePriceUsd > 0 && item.quantity >= (product.minWholesaleQty || 6)) {
+
+            // Calc total cart quantity to apply wholesale
+            const totalCartQty = items.reduce((acc, currentItem) => acc + (currentItem.quantity || 1), 0);
+
+            if (product.wholesalePriceUsd > 0 && totalCartQty >= 6) {
                 unitPrice = product.wholesalePriceUsd;
                 isWholesale = true;
             }
 
             const discountValue = parseFloat(item.discountValue) || 0;
-            if (discountValue > 0) {
-                unitPrice = Math.max(0, unitPrice - discountValue);
-            }
 
-            const itemSubtotalUsd = unitPrice * item.quantity;
+            let itemSubtotalUsd = (unitPrice * item.quantity) - discountValue;
+            if (itemSubtotalUsd < 0) itemSubtotalUsd = 0;
             const itemSubtotalBs = itemSubtotalUsd * bcvRate;
             const itemProfit = itemSubtotalUsd - ((product.costUsd || 0) * item.quantity);
 
@@ -87,6 +89,21 @@ export async function POST(req) {
 
             product.stock -= item.quantity;
             await product.save();
+
+            // Log de Inventario para Venta
+            const seller = await User.findById(userId);
+            await InventoryLog.create({
+                productId: product._id,
+                productName: product.name,
+                productCode: product.code,
+                quantity: item.quantity,
+                type: 'sale',
+                reason: `Venta ${saleId}`,
+                warehouseId: product.warehouseId,
+                warehouseName: 'Bodega Principal', // Idealmente poblar warehouseId antes
+                userId: userId,
+                username: seller?.username || 'Sistema'
+            });
         }
 
         // 4. Calcular pagos realizados (abono inicial)
@@ -129,13 +146,16 @@ export async function POST(req) {
             date: new Date(),
         });
 
-        // 7. Actualizar totales de la sesión de caja SOLAMENTE CON LO PAGADO REALMENTE
-        activeSession.totalSalesUsd += totalPaidUsd;
-        activeSession.totalSalesBs += totalPaidBs;
+        // 7. Actualizar totales de la sesión de caja CON EL TOTAL DE LA VENTA (Inmediato para crédito)
+        // Según lo pedido por el usuario: reconocer el ingreso de inmediato incluso en crédito
+        activeSession.totalSalesUsd += totalUsd;
+        activeSession.totalSalesBs += totalBs;
         activeSession.salesCount += 1;
         await activeSession.save();
 
-        return NextResponse.json(newSale, { status: 201 });
+        const populatedSale = await Sale.findById(newSale._id).populate('items.productId', 'name code');
+
+        return NextResponse.json(populatedSale, { status: 201 });
     } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
     }

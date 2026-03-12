@@ -18,9 +18,13 @@ export default function CotizacionesPage() {
     };
 
     const fetchBcv = async () => {
-        const res = await fetch('/api/bcv');
-        const data = await res.json();
-        if (data.value) setBcvRate(data.value);
+        try {
+            const res = await fetch('/api/bcv');
+            const json = await res.json();
+            if (json.ok && json.data) {
+                setBcvRate(json.data.EUR || 39.8);
+            }
+        } catch (e) { console.error('Error loading BCV', e); }
     };
 
     const convertToSale = async (quote) => {

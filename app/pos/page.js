@@ -10,7 +10,7 @@ export default function PosPage() {
     const [search, setSearch] = useState('');
     const [customerSearch, setCustomerSearch] = useState('');
     const [selectedCustomerId, setSelectedCustomerId] = useState('');
-    const [bcvRate, setBcvRate] = useState(36.50);
+    const [bcvData, setBcvData] = useState({ rate: 36.50, percentage: 0 });
     const [selectedMethods, setSelectedMethods] = useState([]);
     const [methods, setMethods] = useState([]);
     const [lastSale, setLastSale] = useState(null);
@@ -23,7 +23,7 @@ export default function PosPage() {
         fetchCustomers();
         fetchMethods();
         fetchBcv();
-        const interval = setInterval(fetchBcv, 120000);
+        const interval = setInterval(fetchBcv, 60 * 60 * 1000); // 60 minutos
         return () => clearInterval(interval);
     }, []);
 
@@ -54,10 +54,18 @@ export default function PosPage() {
     const fetchBcv = async () => {
         try {
             const res = await fetch('/api/bcv');
-            const data = await res.json();
-            if (data && data.value) setBcvRate(data.value);
+            const json = await res.json();
+            if (json.ok && json.data) {
+                // El usuario pidió usar la tasa EURO BCV para los cálculos de venta
+                setBcvData({
+                    rate: json.data.EUR || 39.8,
+                    percentage: json.data.percentage || 0 // Percentage might still come from manual POSTs if needed
+                });
+            }
         } catch (e) { console.error('Error loading BCV', e); }
     };
+
+    const getAdjustedRate = () => bcvData.rate * (1 + (bcvData.percentage / 100));
 
     const addToCart = (product) => {
         if (product.stock <= 0) return alert('¡Sin stock disponible!');
@@ -68,22 +76,40 @@ export default function PosPage() {
                     alert('No puedes agregar más de lo que hay en stock');
                     return prev;
                 }
-                return prev.map(item => item._id === product._id ? { ...item, quantity: item.quantity + 1 } : item);
+                const otherItems = prev.filter(item => item._id !== product._id);
+                return [{ ...existing, quantity: existing.quantity + 1 }, ...otherItems];
             }
-            return [...prev, { ...product, quantity: 1, discountValue: 0 }];
+            return [{ ...product, quantity: 1, discountValue: 0 }, ...prev];
         });
     };
 
     const updateQuantity = (id, delta) => {
         setCart(prev => prev.map(item => {
             if (item._id === id) {
-                const newQty = item.quantity + delta;
-                if (newQty < 1) return item;
+                let currentQty = typeof item.quantity === 'number' ? item.quantity : 1;
+                const newQty = currentQty + delta;
+                if (newQty < 1) return { ...item, quantity: 1 };
                 if (newQty > item.stock) {
                     alert('Excede el stock disponible');
-                    return item;
+                    return { ...item, quantity: item.stock };
                 }
                 return { ...item, quantity: newQty };
+            }
+            return item;
+        }));
+    };
+
+    const updateQuantityExact = (id, value) => {
+        setCart(prev => prev.map(item => {
+            if (item._id === id) {
+                if (value === '') return { ...item, quantity: '' };
+                let val = parseInt(value, 10);
+                if (isNaN(val) || val < 1) val = 1;
+                if (val > item.stock) {
+                    alert('Excede el stock disponible');
+                    val = item.stock;
+                }
+                return { ...item, quantity: val };
             }
             return item;
         }));
@@ -95,8 +121,9 @@ export default function PosPage() {
         if (val < 0) val = 0;
         setCart(prev => prev.map(item => {
             if (item._id === id) {
-                const { price } = calculateItemPrice({ ...item, discountValue: 0 });
-                if (val > price) val = price;
+                const { price } = calculateItemPrice({ ...item, discountValue: 0 }, prev);
+                const lineTotal = price * (item.quantity || 1);
+                if (val > lineTotal) val = lineTotal;
                 return { ...item, discountValue: val };
             }
             return item;
@@ -105,25 +132,28 @@ export default function PosPage() {
 
     const removeFromCart = (id) => setCart(prev => prev.filter(item => item._id !== id));
 
-    const calculateItemPrice = (item) => {
+    const calculateItemPrice = (item, currentCart = cart) => {
         let price = item.priceUsd;
         let isWholesale = false;
-        if (item.wholesalePriceUsd > 0 && item.quantity >= (item.minWholesaleQty || 6)) {
+
+        const totalCartQty = currentCart.reduce((acc, currentItem) => acc + (typeof currentItem.quantity === 'number' ? currentItem.quantity : 1), 0);
+
+        if (item.wholesalePriceUsd > 0 && totalCartQty >= 6) {
             price = item.wholesalePriceUsd;
             isWholesale = true;
-        }
-        if (item.discountValue > 0) {
-            price = Math.max(0, price - item.discountValue);
         }
         return { price, isWholesale };
     };
 
     const totalUsd = cart.reduce((acc, item) => {
-        const { price } = calculateItemPrice(item);
-        return acc + (price * item.quantity);
+        const { price } = calculateItemPrice(item, cart);
+        let qty = typeof item.quantity === 'number' ? item.quantity : 1;
+        let lineTotal = (price * qty) - (item.discountValue || 0);
+        return acc + Math.max(0, lineTotal);
     }, 0);
 
-    const totalBs = totalUsd * bcvRate;
+    const totalBs = totalUsd * getAdjustedRate();
+    const totalAdjustedUsd = totalUsd * (1 + (bcvData.percentage / 100));
 
     // --- Multi Payment Logic ---
     const toggleMethod = (method) => {
@@ -147,7 +177,7 @@ export default function PosPage() {
 
     const totalAssigned = selectedMethods.reduce((acc, p) => {
         const isBs = (p.currency || '').toUpperCase().includes('BS');
-        return acc + (isBs ? p.amount / bcvRate : p.amount);
+        return acc + (isBs ? p.amount / getAdjustedRate() : p.amount);
     }, 0);
 
     const remaining = totalUsd - totalAssigned;
@@ -164,13 +194,24 @@ export default function PosPage() {
         if (!isCredit) {
             if (selectedMethods.length === 0) return alert('Debes seleccionar al menos un método de pago');
 
-            if (selectedMethods.length === 1 && selectedMethods[0].amount === 0) {
-                const isBs = (selectedMethods[0].currency || '').toUpperCase().includes('BS');
-                selectedMethods[0].amount = isBs ? totalBs : totalUsd;
+            // Crear una copia para validación local sin depender del estado asíncrono
+            let localMethods = [...selectedMethods];
+
+            // Auto-completar monto si solo hay uno y está en 0
+            if (localMethods.length === 1 && localMethods[0].amount === 0) {
+                const isBs = (localMethods[0].currency || '').toUpperCase().includes('BS');
+                localMethods[0].amount = isBs ? totalBs : totalUsd;
             }
 
-            if (Math.abs(remaining) > 0.01) {
-                return alert(`Para venta de contado el monto debe ser exacto. Falta: $${remaining.toFixed(2)} USD`);
+            const localAssigned = localMethods.reduce((acc, p) => {
+                const isBs = (p.currency || '').toUpperCase().includes('BS');
+                return acc + (isBs ? p.amount / getAdjustedRate() : p.amount);
+            }, 0);
+
+            const localRemaining = totalUsd - localAssigned;
+
+            if (Math.abs(localRemaining) > 0.01) {
+                return alert(`Para venta de contado el monto debe ser exacto.\nTotal: $${totalUsd.toFixed(2)}\nAsignado: $${localAssigned.toFixed(2)}\nFalta: $${localRemaining.toFixed(2)} USD`);
             }
         }
 
@@ -185,8 +226,8 @@ export default function PosPage() {
                     return {
                         method: p.methodName,
                         currency: p.currency,
-                        amountUsd: isBs ? p.amount / bcvRate : p.amount,
-                        amountBs: isBs ? p.amount : p.amount * bcvRate
+                        amountUsd: isBs ? p.amount / getAdjustedRate() : p.amount,
+                        amountBs: isBs ? p.amount : p.amount * getAdjustedRate()
                     };
                 });
 
@@ -241,7 +282,7 @@ export default function PosPage() {
     return (
         <div className="h-[100dvh] flex flex-col bg-gray-50 font-sans overflow-hidden text-slate-900">
             {/* Header */}
-            <header className="bg-white px-4 md:px-8 py-4 shadow-sm flex flex-col md:flex-row justify-between items-center z-30 gap-4 border-b">
+            <header className="bg-white px-4 md:px-8 py-4 shadow-sm flex flex-col md:flex-row justify-between items-center z-[60] relative gap-4 border-b">
                 <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
                     <h1 className="text-xl font-black text-slate-800 uppercase tracking-tighter w-full text-center md:text-left">Ventas POS</h1>
 
@@ -266,10 +307,13 @@ export default function PosPage() {
                             placeholder="Buscar Cliente (Nombre/ID/Tlf)..."
                             className={`w-full border-2 rounded-xl px-4 py-2.5 font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500 text-sm transition-all ${selectedCustomerId ? 'bg-blue-50 border-blue-200' : 'bg-gray-100 border-transparent'}`}
                             value={customerSearch}
-                            onChange={(e) => setCustomerSearch(e.target.value)}
+                            onChange={(e) => {
+                                setCustomerSearch(e.target.value);
+                                if (selectedCustomerId) setSelectedCustomerId('');
+                            }}
                         />
-                        {customerSearch && (
-                            <div className="absolute top-full left-0 w-full bg-white shadow-2xl rounded-xl mt-1 max-h-48 overflow-y-auto z-[60] border border-gray-100">
+                        {customerSearch && !selectedCustomerId && (
+                            <div className="absolute top-full left-0 w-full md:w-[320px] bg-white shadow-2xl rounded-xl mt-1 max-h-60 overflow-y-auto z-[60] border border-gray-100">
                                 {!isCredit && (
                                     <button
                                         className="w-full text-left p-3 hover:bg-gray-50 text-xs font-black uppercase text-blue-600 border-b"
@@ -281,11 +325,11 @@ export default function PosPage() {
                                 {filteredCustomers.map(c => (
                                     <button
                                         key={c._id}
-                                        className="w-full text-left p-3 hover:bg-blue-50 text-xs font-bold border-b last:border-none flex justify-between items-center bg-white"
+                                        className="w-full text-left p-3 hover:bg-blue-50 text-sm font-bold border-b last:border-none flex flex-col justify-center items-start bg-white gap-0.5"
                                         onClick={() => { setSelectedCustomerId(c._id); setCustomerSearch(c.name); }}
                                     >
-                                        <span className="truncate max-w-[120px]">{c.name}</span>
-                                        <span className="text-gray-400 text-[10px] truncate">{c.idNumber}</span>
+                                        <span className="whitespace-normal break-words leading-tight w-full text-slate-800">{c.name}</span>
+                                        <span className="text-gray-400 text-[10px] uppercase tracking-widest">{c.idNumber} {c.phone ? `- ${c.phone}` : ''}</span>
                                     </button>
                                 ))}
                             </div>
@@ -295,8 +339,8 @@ export default function PosPage() {
 
                 <div className="flex items-center justify-between w-full md:w-auto gap-6">
                     <div className="text-left md:text-right flex-1">
-                        <span className="text-xs font-black text-gray-400 uppercase block tracking-widest">Tasa Referencial (BCV)</span>
-                        <span className="text-xl font-black text-emerald-600">Bs. {bcvRate.toFixed(2)}</span>
+                        <span className="text-xs font-black text-gray-400 uppercase block tracking-widest">Tasa Euro (BCV)</span>
+                        <span className="text-xl font-black text-emerald-600">Bs. {bcvData.rate.toFixed(2)}</span>
                     </div>
                     <button
                         onClick={() => setShowCartMobile(!showCartMobile)}
@@ -338,16 +382,20 @@ export default function PosPage() {
                                                 {product.imageUrl ? <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform" /> : <span className="text-4xl md:text-5xl opacity-20">📦</span>}
                                                 {isLowStock && <span className="absolute top-2 left-2 bg-red-600 text-white text-[10px] md:text-xs px-2 py-0.5 rounded-full font-black uppercase shadow-lg">Stock Crítico</span>}
                                             </div>
-                                            <h3 className="font-black text-slate-800 text-xs md:text-sm line-clamp-2 text-center leading-tight uppercase tracking-tighter px-1 md:px-2 h-8 md:h-10">{product.name}</h3>
+                                            <h3 className="font-black text-slate-800 text-sm md:text-lg text-center leading-tight uppercase px-1 md:px-2 flex items-center justify-center break-words">{product.name}</h3>
                                         </div>
                                         <div className="mt-2 md:mt-4 pt-2 md:pt-4 border-t border-gray-50 space-y-1 md:space-y-2">
                                             <div className="flex justify-between items-center text-xs md:text-sm font-black">
-                                                <span className="text-blue-600 text-base md:text-lg">${product.priceUsd.toFixed(2)}</span>
+                                                <span className="text-blue-600 text-lg md:text-xl">${product.priceUsd.toFixed(2)}</span>
                                                 <span className={`${product.stock <= 0 ? 'text-red-500' : 'text-gray-400'}`}>Stock: {product.stock}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[10px] md:text-xs font-black text-orange-600 truncate">Bs. {(product.priceUsd * getAdjustedRate()).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
+                                                {bcvData.percentage > 0 && <span className="text-[8px] font-black bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-md uppercase">+{bcvData.percentage}%</span>}
                                             </div>
                                             {product.wholesalePriceUsd > 0 && (
                                                 <div className="bg-emerald-50 text-emerald-600 px-2 md:px-3 py-1 md:py-1.5 rounded-lg md:rounded-xl text-center">
-                                                    <span className="text-[10px] md:text-xs font-black uppercase">💡 Mayor: ${product.wholesalePriceUsd.toFixed(2)} (+{product.minWholesaleQty || 6})</span>
+                                                    <span className="text-xs md:text-sm font-black uppercase">💡 Mayor: ${product.wholesalePriceUsd.toFixed(2)} (+{product.minWholesaleQty || 6})</span>
                                                 </div>
                                             )}
                                         </div>
@@ -382,7 +430,7 @@ export default function PosPage() {
                         {/* Items del carrito */}
                         <div className="space-y-3">
                             {cart.map(item => {
-                                const { price, isWholesale } = calculateItemPrice(item);
+                                const { price, isWholesale } = calculateItemPrice(item, cart);
                                 return (
                                     <div key={item._id} className="bg-gray-50 p-3 md:p-4 rounded-2xl border border-gray-100">
                                         <div className="flex justify-between items-start mb-2">
@@ -395,7 +443,12 @@ export default function PosPage() {
                                         <div className="flex items-center justify-between gap-2">
                                             <div className="flex items-center bg-white shadow-sm rounded-lg p-0.5 border">
                                                 <button onClick={() => updateQuantity(item._id, -1)} className="w-9 h-9 flex items-center justify-center text-slate-900 font-black text-base rounded hover:bg-gray-100 transition-colors">-</button>
-                                                <span className="w-8 text-center font-black text-base">{item.quantity}</span>
+                                                <input
+                                                    type="number"
+                                                    className="w-10 text-center font-black text-base bg-transparent outline-none m-0 p-0"
+                                                    value={item.quantity === '' ? '' : item.quantity}
+                                                    onChange={(e) => updateQuantityExact(item._id, e.target.value)}
+                                                />
                                                 <button onClick={() => updateQuantity(item._id, 1)} className="w-9 h-9 flex items-center justify-center text-slate-900 font-black text-base rounded hover:bg-gray-100 transition-colors">+</button>
                                             </div>
                                             <div className="w-20">
@@ -412,7 +465,9 @@ export default function PosPage() {
                                                 <span className={`text-[10px] font-black uppercase ${isWholesale ? 'text-violet-600' : 'text-gray-400'}`}>
                                                     {isWholesale ? '🔥Mayor' : 'Detal'}
                                                 </span>
-                                                <p className="font-black text-slate-800 text-base tracking-tighter">${(price * item.quantity).toFixed(2)}</p>
+                                                <p className="font-black text-slate-800 text-base tracking-tighter">
+                                                    ${Math.max(0, (price * (typeof item.quantity === 'number' ? item.quantity : 1)) - (item.discountValue || 0)).toFixed(2)}
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
@@ -432,107 +487,115 @@ export default function PosPage() {
                                 <span className="text-slate-800 font-black text-lg uppercase tracking-tighter italic">Total USD</span>
                                 <span className="text-emerald-600 font-black text-2xl tracking-tighter italic">${totalUsd.toFixed(2)}</span>
                             </div>
-                            <div className="bg-slate-900 px-4 py-4 rounded-2xl text-white flex justify-between items-center">
-                                <span className="text-xs font-black text-white/50 uppercase tracking-widest">Total Bs.</span>
-                                <span className="text-xl font-black italic tracking-tighter">Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
-                            </div>
-                        </div>
-
-                        {/* Métodos de Pago */}
-                        <div className="mt-4 pt-4 border-t border-gray-200">
-                            <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3 text-center">Formas de Pago</p>
-                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-                                {methods.map(m => {
-                                    const isSelected = selectedMethods.some(p => p.methodName === m.name);
-                                    return (
-                                        <button
-                                            key={m._id}
-                                            type="button"
-                                            onClick={() => toggleMethod(m)}
-                                            className={`py-3 px-2 rounded-xl text-xs font-black uppercase transition-all border-2 flex flex-col items-center gap-1 relative ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-lg scale-105' : 'bg-gray-50 border-gray-50 text-gray-400 hover:border-blue-100'}`}
-                                        >
-                                            <span className="max-w-full truncate px-1">{m.name}</span>
-                                            <span className="text-[10px] border px-2 rounded-sm opacity-70 leading-none">{m.currency || 'USD'}</span>
-                                            {isSelected && <span className="absolute -top-2 -right-2 text-base">✅</span>}
-                                        </button>
-                                    );
-                                })}
-                                {methods.length === 0 && <p className="col-span-full text-xs font-black text-red-400 text-center py-4 bg-red-50 rounded-xl uppercase">⚠️ Sin métodos</p>}
-                            </div>
-                        </div>
-
-                        {/* Distribución de Multi-Pago */}
-                        {selectedMethods.length > 1 && (
-                            <div className="mt-4 space-y-3 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
-                                <p className="text-xs font-black text-blue-600 uppercase tracking-widest text-center">Distribuir Monto</p>
-                                {selectedMethods.map(pm => {
-                                    const isBs = (pm.currency || '').toUpperCase().includes('BS');
-                                    const currLabel = isBs ? 'Bs.' : '$';
-                                    return (
-                                        <div key={pm.methodName} className="bg-white rounded-xl p-3 border border-blue-50 flex items-center gap-3">
-                                            <span className="text-xs font-black text-slate-500 uppercase flex-1 truncate">{pm.methodName}</span>
-                                            <span className="text-sm font-black text-blue-600">{currLabel}</span>
-                                            <input
-                                                type="number" step="0.01" placeholder="0.00" min="0"
-                                                className="w-28 bg-gray-50 border border-gray-200 focus:border-blue-500 rounded-lg text-base font-black py-2 px-3 outline-none text-slate-900"
-                                                value={pm.amount || ''}
-                                                onChange={(e) => updateMethodAmount(pm.methodName, e.target.value)}
-                                            />
-                                        </div>
-                                    );
-                                })}
-                                <div className={`text-center py-2.5 rounded-lg font-black text-xs uppercase ${Math.abs(remaining) < 0.01 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
-                                    {Math.abs(remaining) < 0.01 ? '✅ OK' : `⚠️ Falta: $${remaining.toFixed(2)} / Bs. ${(remaining * bcvRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            <div className="bg-slate-900 text-white p-5 rounded-[2.5rem] shadow-xl mb-6 border-b-4 border-slate-700">
+                                <div className="flex justify-between items-center mb-1">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Total Bs.</p>
+                                    <p className="text-2xl font-black tracking-tighter">
+                                        Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                </div>
+                                <div className="flex justify-end pr-1">
+                                    <p className="text-[11px] font-bold text-slate-500 bg-slate-800/50 px-3 py-1 rounded-full border border-slate-700/50 italic">
+                                        Equivalente: ${totalAdjustedUsd.toFixed(2)} USD
+                                    </p>
+                                </div>
+                            </div>      {/* Métodos de Pago */}
+                            <div className="mt-4 pt-4 border-t border-gray-200">
+                                <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3 text-center">Formas de Pago</p>
+                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                                    {methods.map(m => {
+                                        const isSelected = selectedMethods.some(p => p.methodName === m.name);
+                                        return (
+                                            <button
+                                                key={m._id}
+                                                type="button"
+                                                onClick={() => toggleMethod(m)}
+                                                className={`py-3 px-2 rounded-xl text-xs font-black uppercase transition-all border-2 flex flex-col items-center gap-1 relative ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-lg scale-105' : 'bg-gray-50 border-gray-50 text-gray-400 hover:border-blue-100'}`}
+                                            >
+                                                <span className="max-w-full truncate px-1">{m.name}</span>
+                                                <span className="text-[10px] border px-2 rounded-sm opacity-70 leading-none">{m.currency || 'USD'}</span>
+                                                {isSelected && <span className="absolute -top-2 -right-2 text-base">✅</span>}
+                                            </button>
+                                        );
+                                    })}
+                                    {methods.length === 0 && <p className="col-span-full text-xs font-black text-red-400 text-center py-4 bg-red-50 rounded-xl uppercase">⚠️ Sin métodos</p>}
                                 </div>
                             </div>
-                        )}
 
-                        {/* Botón de facturar - dentro del scroll */}
-                        <div className="mt-4 pb-4">
-                            <button
-                                disabled={isProcessing || cart.length === 0 || selectedMethods.length === 0}
-                                onClick={handleSale}
-                                className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all transform active:scale-95 shadow-xl text-center ${isProcessing || cart.length === 0 || selectedMethods.length === 0
-                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200 ring-4 ring-blue-600/10'
-                                    }`}
-                            >
-                                {isProcessing ? '⏳ PROCESANDO...' : (selectedMethods.length > 0 ? '🛒 FACTURAR' : '⚠️ SELECCIONA PAGO')}
-                            </button>
+                            {/* Distribución de Multi-Pago */}
+                            {selectedMethods.length > 1 && (
+                                <div className="mt-4 space-y-3 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+                                    <p className="text-xs font-black text-blue-600 uppercase tracking-widest text-center">Distribuir Monto</p>
+                                    {selectedMethods.map(pm => {
+                                        const isBs = (pm.currency || '').toUpperCase().includes('BS');
+                                        const currLabel = isBs ? 'Bs.' : '$';
+                                        return (
+                                            <div key={pm.methodName} className="bg-white rounded-xl p-3 border border-blue-50 flex items-center gap-3">
+                                                <span className="text-xs font-black text-slate-500 uppercase flex-1 truncate">{pm.methodName}</span>
+                                                <span className="text-sm font-black text-blue-600">{currLabel}</span>
+                                                <input
+                                                    type="number" step="0.01" placeholder="0.00" min="0"
+                                                    className="w-28 bg-gray-50 border border-gray-200 focus:border-blue-500 rounded-lg text-base font-black py-2 px-3 outline-none text-slate-900"
+                                                    value={pm.amount || ''}
+                                                    onChange={(e) => updateMethodAmount(pm.methodName, e.target.value)}
+                                                />
+                                            </div>
+                                        );
+                                    })}
+                                    <div className={`text-center py-2.5 rounded-lg font-black text-xs uppercase ${Math.abs(remaining) < 0.01 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'}`}>
+                                        {Math.abs(remaining) < 0.01 ? '✅ OK' : `⚠️ Falta: $${remaining.toFixed(2)} / Bs. ${(remaining * getAdjustedRate()).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Botón de facturar - dentro del scroll */}
+                            <div className="mt-4 pb-4">
+                                <button
+                                    disabled={isProcessing || cart.length === 0 || selectedMethods.length === 0}
+                                    onClick={handleSale}
+                                    className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all transform active:scale-95 shadow-xl text-center ${isProcessing || cart.length === 0 || selectedMethods.length === 0
+                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                        : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200 ring-4 ring-blue-600/10'
+                                        }`}
+                                >
+                                    {isProcessing ? '⏳ PROCESANDO...' : (selectedMethods.length > 0 ? '🛒 FACTURAR' : '⚠️ SELECCIONA PAGO')}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Float cart button for mobile */}
-            {
-                !showCartMobile && cart.length > 0 && (
-                    <button
-                        onClick={() => setShowCartMobile(true)}
-                        className="md:hidden fixed bottom-6 right-6 z-[40] bg-blue-600 text-white p-5 rounded-full shadow-[0_10px_40px_rgba(37,99,235,0.6)] flex items-center justify-center gap-3 font-black uppercase tracking-widest text-sm animate-in slide-in-from-bottom active:scale-95 transition-all"
-                    >
-                        <span className="text-xl">🛒</span>
-                        Ver Carrito ({cart.length})
-                    </button>
-                )
-            }
+                {/* Float cart button for mobile */}
+                {
+                    !showCartMobile && cart.length > 0 && (
+                        <button
+                            onClick={() => setShowCartMobile(true)}
+                            className="md:hidden fixed bottom-6 right-6 z-[40] bg-blue-600 text-white p-5 rounded-full shadow-[0_10px_40px_rgba(37,99,235,0.6)] flex items-center justify-center gap-3 font-black uppercase tracking-widest text-sm animate-in slide-in-from-bottom active:scale-95 transition-all"
+                        >
+                            <span className="text-xl">🛒</span>
+                            Ver Carrito ({cart.length})
+                        </button>
+                    )
+                }
 
-            {/* Modal de Ticket de Impresión */}
-            {
-                lastSale && (
-                    <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-4 z-[200] animate-in fade-in zoom-in duration-300">
-                        <div className="bg-white p-6 md:p-10 rounded-[40px] md:rounded-[50px] shadow-2xl max-w-sm w-full relative overflow-hidden border-[8px] md:border-[12px] border-slate-50">
-                            <BoletaTicket sale={lastSale} />
-                            <div className="mt-8 md:mt-10 flex flex-col gap-3 md:gap-4">
-                                <button onClick={() => { window.print(); setLastSale(null); }} className="w-full py-5 md:py-6 bg-slate-900 text-white font-black rounded-2xl md:rounded-3xl uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform text-xs md:text-sm">🖨️ Imprimir Ticket</button>
-                                <button onClick={() => setLastSale(null)} className="w-full py-3 text-gray-400 font-bold uppercase tracking-widest hover:text-red-500 transition-colors text-xs text-center border-t border-gray-100 pt-5">X Cerrar sin Imprimir</button>
+                {/* Modal de Ticket de Impresión */}
+                {
+                    lastSale && (
+                        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[200] overflow-y-auto animate-in fade-in duration-300">
+                            <div className="min-h-full flex items-center justify-center p-4 md:p-10">
+                                <div className="bg-white p-6 md:p-10 rounded-[40px] md:rounded-[50px] shadow-2xl max-w-sm w-full relative border-[8px] md:border-[12px] border-slate-50">
+                                    <BoletaTicket sale={lastSale} />
+                                    <div className="mt-8 md:mt-10 flex flex-col gap-3 md:gap-4 no-print">
+                                        <button onClick={() => { window.print(); setLastSale(null); }} className="w-full py-5 md:py-6 bg-slate-900 text-white font-black rounded-2xl md:rounded-3xl uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform text-xs md:text-sm">🖨️ Imprimir Ticket</button>
+                                        <button onClick={() => setLastSale(null)} className="w-full py-3 text-gray-400 font-bold uppercase tracking-widest hover:text-red-500 transition-colors text-xs text-center border-t border-gray-100 pt-5">X Cerrar sin Imprimir</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )
-            }
+                    )
+                }
 
-            <style jsx global>{`
+                <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 20px; }
@@ -540,7 +603,9 @@ export default function PosPage() {
                 input[type=number]::-webkit-inner-spin-button, 
                 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
                 @media print { .no-print { display: none !important; } }
+                ${lastSale ? 'body { overflow: hidden !important; }' : ''}
             `}</style>
-        </div >
+            </div >
+        </div>
     );
 }

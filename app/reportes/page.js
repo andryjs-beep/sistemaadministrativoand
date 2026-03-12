@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
+import SaleDetailModal from '@/components/modals/SaleDetailModal';
+import BoletaTicket from '@/components/print/BoletaTicket';
 
 export default function ReportesPage() {
+    const [user, setUser] = useState(null);
     const [data, setData] = useState(null);
+    const [detailSale, setDetailSale] = useState(null);
+    const [printSale, setPrintSale] = useState(null);
     const [loading, setLoading] = useState(false);
     const [reportType, setReportType] = useState('daily');
     const [dateFrom, setDateFrom] = useState('');
@@ -27,7 +32,29 @@ export default function ReportesPage() {
         setLoading(false);
     }, [reportType, dateFrom, dateTo]);
 
-    useEffect(() => { fetchReport(); }, [fetchReport]);
+    useEffect(() => {
+        const stored = JSON.parse(localStorage.getItem('user'));
+        if (stored) setUser(stored);
+        fetchReport();
+    }, [fetchReport]);
+
+    const deleteSale = async (id) => {
+        if (!confirm('¿Estás seguro de eliminar esta factura? El stock será revertido y esta acción es permanente.')) return;
+        try {
+            const res = await fetch(`/api/sales/${id}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user?._id })
+            });
+            if (res.ok) {
+                alert('Factura eliminada con éxito');
+                fetchReport();
+            } else {
+                const err = await res.json();
+                alert(err.error);
+            }
+        } catch (e) { alert('Error al eliminar'); }
+    };
 
     const s = data?.summary || {};
     const payBreak = data?.paymentBreakdown || {};
@@ -79,12 +106,12 @@ export default function ReportesPage() {
                 {/* Ingresos Brutos */}
                 <div className="lg:col-span-2 bg-gradient-to-br from-blue-600 to-indigo-700 p-8 rounded-[40px] text-white shadow-2xl relative overflow-hidden">
                     <div className="relative z-10">
-                        <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-2">Total Ventas Brutas ($)</p>
-                        <h2 className="text-5xl font-black tracking-tighter mb-6">${(s.totalSalesUsd || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</h2>
+                        <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-2">Ingresos Brutos Recaudados</p>
+                        <h2 className="text-5xl font-black tracking-tighter mb-6">${(s.collectedUsd || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</h2>
                         <div className="flex gap-4">
                             <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl flex-1">
-                                <p className="text-[8px] font-black uppercase opacity-60 mb-1">Monto en BS</p>
-                                <p className="font-black text-xs">Bs. {(s.totalSalesBs || 0).toLocaleString('es-VE')}</p>
+                                <p className="text-[8px] font-black uppercase opacity-60 mb-1">Total en Bs</p>
+                                <p className="font-black text-xs">Bs. {(s.collectedBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
                             </div>
                             <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl flex-1">
                                 <p className="text-[8px] font-black uppercase opacity-60 mb-1">Ventas Realizadas</p>
@@ -111,13 +138,15 @@ export default function ReportesPage() {
 
             {/* Secondary Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                <div className="bg-red-50 p-6 rounded-[32px] border border-red-100">
+                <div className="bg-red-50 p-6 rounded-[32px] border border-red-100 flex flex-col justify-center">
                     <p className="text-[9px] font-black text-red-400 uppercase tracking-widest mb-1">Gastos / Egresos</p>
-                    <p className="text-2xl font-black text-red-600">${(s.totalExpensesUsd || 0).toFixed(2)}</p>
+                    <p className="text-xl font-black text-red-600">${(s.spentUsd || 0).toFixed(2)} <span className="text-[10px] text-red-400">USD</span></p>
+                    <p className="text-lg font-black text-red-500 mt-1">Bs. {(s.spentBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
                 </div>
-                <div className="bg-slate-900 p-6 rounded-[32px] text-white">
+                <div className="bg-slate-900 p-6 rounded-[32px] text-white flex flex-col justify-center">
                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Balance Real (Neto)</p>
-                    <p className="text-2xl font-black text-white">${(s.netUsd || 0).toFixed(2)}</p>
+                    <p className="text-xl font-black text-white">${(s.trueNetUsd || 0).toFixed(2)} <span className="text-[10px] text-gray-400">USD</span></p>
+                    <p className="text-lg font-black text-gray-300 mt-1">Bs. {(s.trueNetBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
                 </div>
                 <div className="bg-violet-50 p-6 rounded-[32px] border border-violet-100">
                     <p className="text-[9px] font-black text-violet-400 uppercase tracking-widest mb-1">Ventas al Mayor</p>
@@ -198,19 +227,29 @@ export default function ReportesPage() {
                 <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm mb-8">
                     <h3 className="font-black text-red-600 uppercase text-xs tracking-widest mb-6 border-b pb-4">📤 Egresos por Método de Pago</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {Object.entries(expBreak).map(([method, info]) => (
-                            <div key={method} className="flex items-center gap-4 p-4 rounded-2xl bg-red-50/50 hover:bg-red-50 transition">
-                                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 bg-red-100 text-red-500">📤</div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-black text-slate-700 uppercase truncate">{method}</p>
-                                    <p className="text-[8px] font-bold text-gray-400">{info.count} egresos</p>
+                        {Object.entries(expBreak).map(([method, info]) => {
+                            const isBs = info.currency && info.currency.toUpperCase().includes('BS');
+                            return (
+                                <div key={method} className="flex items-center gap-4 p-4 rounded-2xl bg-red-50/50 hover:bg-red-50 transition">
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${isBs ? 'bg-orange-100 text-orange-500' : 'bg-red-100 text-red-500'}`}>
+                                        {isBs ? '🇻🇪' : '📤'}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-black text-slate-700 uppercase truncate">{method}</p>
+                                        <p className="text-[8px] font-bold text-gray-400">{info.count} egresos ({info.currency})</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className={`text-base font-black ${isBs ? 'text-orange-500' : 'text-red-600'}`}>
+                                            {isBs ? 'Bs. ' : '$'}
+                                            {(info.mainTotal || 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </p>
+                                        <p className="text-[8px] font-bold text-gray-400">
+                                            {isBs ? `$ ${(info.totalUsd || 0).toFixed(2)}` : `Bs. ${(info.totalBs || 0).toLocaleString('es-VE')}`}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div className="text-right">
-                                    <p className="text-base font-black text-red-600">${(info.totalUsd || 0).toFixed(2)}</p>
-                                    <p className="text-[8px] font-bold text-gray-400">Bs. {(info.totalBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -223,10 +262,62 @@ export default function ReportesPage() {
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full">
-                        ... (rest of the sales table from the file) ...
+                        <thead>
+                            <tr className="border-b border-gray-100 italic">
+                                {['Factura / ID', 'Cliente / Tlf', 'Fecha', 'Tasa', 'Total USD', 'Total BS', 'Acciones'].map(h => (
+                                    <th key={h} className="p-3 text-left text-[11px] font-black text-gray-500 uppercase tracking-[0.1em]">{h}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {(data?.sales || []).map(sale => (
+                                <tr key={sale._id} className="hover:bg-blue-50/30 transition-colors group">
+                                    <td className="p-3">
+                                        <p className="text-xs font-black text-slate-800 tracking-tighter uppercase">{sale.saleId}</p>
+                                        <span className="text-[9px] font-bold text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded tracking-widest">{sale.status === 'paid' ? 'PAGADA' : 'CRÉDITO'}</span>
+                                    </td>
+                                    <td className="p-3">
+                                        <p className="text-sm font-black text-slate-700 uppercase">{sale.customerId?.name || sale.customerName || 'Venta Rápida'}</p>
+                                        <p className="text-[10px] font-bold text-gray-400 italic">{(sale.customerId?.phone || sale.customerPhone) || 'Sin Teléfono'}</p>
+                                    </td>
+                                    <td className="p-3 text-sm font-bold text-slate-600">{new Date(sale.date).toLocaleDateString('es-VE')}</td>
+                                    <td className="p-3 text-xs font-black text-blue-500 italic">{sale.exchangeRate || (sale.totalBs / sale.totalUsd).toFixed(2)}</td>
+                                    <td className="p-3 font-black text-emerald-600 text-base tracking-tighter">${(sale.totalUsd || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                    <td className="p-3 font-black text-slate-800 text-sm">Bs. {(sale.totalBs || 0).toLocaleString('es-VE')}</td>
+                                    <td className="p-3">
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setDetailSale(sale)} className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-sm hover:bg-blue-600 hover:text-white transition">👁️</button>
+                                            <button onClick={() => setPrintSale(sale)} className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-sm hover:bg-blue-600 hover:text-white transition">🖨️</button>
+                                            {user?.role === 'admin' && (
+                                                <button onClick={() => deleteSale(sale._id)} className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-sm hover:bg-red-600 hover:text-white transition">🗑️</button>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
                     </table>
+                    {(!data?.sales || data.sales.length === 0) && (
+                        <div className="py-20 text-center opacity-30 italic text-xs font-bold">No se registraron ventas en este periodo</div>
+                    )}
                 </div>
             </div>
+
+            {detailSale && <SaleDetailModal sale={detailSale} onClose={() => setDetailSale(null)} />}
+
+            {printSale && (
+                <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[200] overflow-y-auto animate-in fade-in duration-300">
+                    <div className="min-h-full flex items-center justify-center p-4 md:p-10">
+                        <div className="bg-white p-6 md:p-10 rounded-[40px] md:rounded-[50px] shadow-2xl max-w-sm w-full relative border-[8px] md:border-[12px] border-slate-50">
+                            <BoletaTicket sale={printSale} />
+                            <div className="mt-8 md:mt-10 flex flex-col gap-3 md:gap-4 no-print">
+                                <button onClick={() => { window.print(); setPrintSale(null); }} className="w-full py-5 md:py-6 bg-slate-900 text-white font-black rounded-2xl md:rounded-3xl uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform text-xs md:text-sm">🖨️ Imprimir Ticket</button>
+                                <button onClick={() => setPrintSale(null)} className="w-full py-3 text-gray-400 font-bold uppercase tracking-widest hover:text-red-500 transition-colors text-xs text-center border-t border-gray-100 pt-5">X Cerrar sin Imprimir</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Expenses Detail table */}
             <div className="bg-white rounded-[40px] border border-gray-100 shadow-xl overflow-hidden mb-8">
@@ -239,25 +330,25 @@ export default function ReportesPage() {
                         <thead>
                             <tr className="border-b border-gray-100">
                                 {['Categoría', 'Proveedor', 'Descripción', 'Fecha', 'Método', 'Tasa', 'Monto $', 'Total BS'].map(h => (
-                                    <th key={h} className="p-6 text-left text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">{h}</th>
+                                    <th key={h} className="p-3 text-left text-[11px] font-black text-gray-500 uppercase tracking-[0.1em]">{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {(data?.expenses || []).map(exp => (
                                 <tr key={exp._id} className="hover:bg-red-50/30 transition-colors">
-                                    <td className="p-6">
-                                        <span className="bg-red-50 text-red-600 px-2 py-1 rounded-lg text-[8px] font-black uppercase">{exp.category}</span>
+                                    <td className="p-3">
+                                        <span className="bg-red-50 text-red-600 px-2 py-1 rounded-lg text-[9px] font-black uppercase">{exp.category}</span>
                                     </td>
-                                    <td className="p-6 text-[10px] font-black text-slate-600 uppercase truncate max-w-[120px]">{exp.providerName || 'Particular'}</td>
-                                    <td className="p-6 text-xs font-bold text-slate-400 italic truncate max-w-[150px]">{exp.description}</td>
-                                    <td className="p-6 text-xs font-bold text-slate-600">{new Date(exp.date).toLocaleDateString('es-VE')}</td>
-                                    <td className="p-6">
-                                        <span className="text-[9px] font-black text-slate-400 uppercase">{exp.paymentMethod}</span>
+                                    <td className="p-3 text-xs font-black text-slate-600 uppercase truncate max-w-[150px]">{exp.providerName || 'Particular'}</td>
+                                    <td className="p-3 text-sm font-bold text-slate-500 italic truncate max-w-[180px]">{exp.description}</td>
+                                    <td className="p-3 text-sm font-bold text-slate-600">{new Date(exp.date).toLocaleDateString('es-VE')}</td>
+                                    <td className="p-3">
+                                        <span className="text-[10px] font-black text-slate-500 uppercase">{exp.paymentMethod}</span>
                                     </td>
-                                    <td className="p-6 text-[10px] font-black text-blue-400 italic">{exp.exchangeRate || '—'}</td>
-                                    <td className="p-6 font-black text-red-600 text-sm tracking-tighter">${(exp.amountUsd || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                    <td className="p-6 font-black text-slate-800 text-xs">Bs. {(exp.amountBs || 0).toLocaleString('es-VE')}</td>
+                                    <td className="p-3 text-xs font-black text-blue-500 italic">{exp.exchangeRate || '—'}</td>
+                                    <td className="p-3 font-black text-red-600 text-base tracking-tighter">${(exp.amountUsd || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                    <td className="p-3 font-black text-slate-800 text-sm">Bs. {(exp.amountBs || 0).toLocaleString('es-VE')}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -277,6 +368,7 @@ export default function ReportesPage() {
                     h1 { font-size: 24pt !important; }
                     table th, table td { padding: 8px !important; font-size: 8pt !important; }
                 }
+                ${printSale || detailSale ? 'body { overflow: hidden !important; }' : ''}
             `}</style>
         </div>
     );

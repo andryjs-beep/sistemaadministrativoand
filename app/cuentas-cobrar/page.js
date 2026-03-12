@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import SaleDetailModal from '@/components/modals/SaleDetailModal';
 
 export default function CuentasCobrarPage() {
     const [sales, setSales] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('');
     const [selectedSale, setSelectedSale] = useState(null);
+    const [detailSale, setDetailSale] = useState(null);
     const [methods, setMethods] = useState([]);
     const [newPayment, setNewPayment] = useState({ method: '', amount: '', currency: 'USD' });
     const [bcvRate, setBcvRate] = useState(36.5);
@@ -39,9 +41,13 @@ export default function CuentasCobrarPage() {
     };
 
     const fetchBcv = async () => {
-        const res = await fetch('/api/bcv');
-        const data = await res.json();
-        if (data?.value) setBcvRate(data.value);
+        try {
+            const res = await fetch('/api/bcv');
+            const json = await res.json();
+            if (json.ok && json.data) {
+                setBcvRate(json.data.EUR || 39.8);
+            }
+        } catch (e) { console.error('Error loading BCV', e); }
     };
 
     const handlePayment = async () => {
@@ -49,7 +55,7 @@ export default function CuentasCobrarPage() {
 
         const storedUser = JSON.parse(localStorage.getItem('user'));
         const amount = parseFloat(newPayment.amount);
-        const isBs = newPayment.currency === 'BS';
+        const isBs = (newPayment.currency || '').toUpperCase().includes('BS');
 
         const payload = {
             saleId: selectedSale._id,
@@ -91,7 +97,7 @@ export default function CuentasCobrarPage() {
     return (
         <div className="p-4 md:p-10 bg-gray-50 min-h-screen font-sans text-slate-900">
             <header className="mb-10">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] mb-2">Administración Financiera</p>
+                <p className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] mb-2">Administración Financiera</p>
                 <h1 className="text-4xl font-black text-slate-900 tracking-tight">Cuentas por <span className="text-orange-600">Cobrar</span></h1>
             </header>
 
@@ -120,10 +126,10 @@ export default function CuentasCobrarPage() {
                             <div key={sale._id} className="bg-white p-6 rounded-[32px] shadow-xl border border-gray-100 flex flex-col group hover:border-orange-200 transition-all">
                                 <div className="flex justify-between items-start mb-4">
                                     <div>
-                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{sale.saleId}</p>
+                                        <p className="text-xs font-black text-gray-400 uppercase tracking-widest">{sale.saleId}</p>
                                         <h3 className="text-lg font-black text-slate-800 uppercase">{sale.customerId?.name || 'Cliente Desconocido'}</h3>
                                     </div>
-                                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${sale.status === 'pending' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>
+                                    <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${sale.status === 'pending' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>
                                         {sale.status === 'pending' ? 'Sin Abono' : 'Parcial'}
                                     </span>
                                 </div>
@@ -138,8 +144,8 @@ export default function CuentasCobrarPage() {
                                         <span className="text-emerald-600">${paid.toFixed(2)}</span>
                                     </div>
                                     <div className="pt-2 border-t border-gray-50 flex justify-between items-center">
-                                        <span className="text-[10px] font-black text-gray-400 uppercase">Resta por cobrar</span>
-                                        <span className="text-xl font-black text-red-600">${pending.toFixed(2)}</span>
+                                        <span className="text-xs font-black text-gray-500 uppercase">Resta por cobrar</span>
+                                        <span className="text-2xl font-black text-red-600">${pending.toFixed(2)}</span>
                                     </div>
 
                                     {/* Progress Bar */}
@@ -148,12 +154,20 @@ export default function CuentasCobrarPage() {
                                     </div>
                                 </div>
 
-                                <button
-                                    onClick={() => setSelectedSale(sale)}
-                                    className="mt-6 w-full py-4 bg-slate-900 text-white font-black rounded-2xl shadow-lg hover:bg-orange-600 transition-all active:scale-95 uppercase tracking-widest text-[10px]"
-                                >
-                                    Registrar Abono 💵
-                                </button>
+                                <div className="flex gap-2 mt-6">
+                                    <button
+                                        onClick={() => setDetailSale(sale)}
+                                        className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all uppercase tracking-widest text-[9px]"
+                                    >
+                                        Ver Detalle 👁️
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedSale(sale)}
+                                        className="flex-[2] py-4 bg-slate-900 text-white font-black rounded-2xl shadow-lg hover:bg-orange-600 transition-all active:scale-95 uppercase tracking-widest text-[9px]"
+                                    >
+                                        Registrar Abono 💵
+                                    </button>
+                                </div>
                             </div>
                         );
                     })}
@@ -165,6 +179,8 @@ export default function CuentasCobrarPage() {
                     )}
                 </div>
             )}
+
+            {detailSale && <SaleDetailModal sale={detailSale} onClose={() => setDetailSale(null)} />}
 
             {/* Modal de Abono */}
             {selectedSale && (
