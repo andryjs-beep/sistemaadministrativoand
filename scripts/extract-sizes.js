@@ -48,6 +48,15 @@ async function extractSizes() {
                 }
             }
 
+            // Pattern 2.5: "T [Number]" (e.g., T 4, T 6)
+            if (!detectedSize) {
+                const patternTNum = /\bT\s+(\d+)\b/i;
+                const matchTNum = name.match(patternTNum);
+                if (matchTNum) {
+                    detectedSize = matchTNum[1];
+                }
+            }
+
             // Pattern 3: Measurements like 1 METRO, 2 M
             if (!detectedSize) {
                 const patternMeasure = /(\d+)\s*(METRO|METROS|M)\b/i;

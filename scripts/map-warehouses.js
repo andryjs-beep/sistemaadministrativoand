@@ -31,7 +31,7 @@ async function mapWarehouses() {
             process.exit(1);
         }
 
-        const products = await productsCollection.find({ name: { $regex: /FRANELA|MICRO DURAZNO/i } }).toArray();
+        const products = await productsCollection.find({ name: { $regex: /FRANELA|MICRO\s*DURAZNO/i } }).toArray();
         console.log(`\nFound ${products.length} matching products.`);
         if (dryRun) console.log('--- DRY RUN: No changes will be applied ---\n');
 
@@ -43,7 +43,8 @@ async function mapWarehouses() {
             const name = product.name.toUpperCase();
             let targetWhId = null;
 
-            if (name.includes('MICRO DURAZNO')) {
+            // Priority: Microdurazno has its own warehouse, even if it says "Franela"
+            if (name.includes('MICRO') && name.includes('DURAZNO')) {
                 targetWhId = whMicroId;
             } else if (name.includes('CAS')) {
                 targetWhId = whCasId;

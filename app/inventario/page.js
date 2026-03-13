@@ -93,7 +93,7 @@ export default function InventarioPage() {
             </header>
 
             {/* RESUMEN DE CONSUMO DIARIO */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-10">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
                 <div className="bg-slate-900 text-white p-6 rounded-[32px] shadow-2xl relative overflow-hidden group">
                     <div className="relative z-10">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consumo Diario (Franelas)</p>
@@ -123,6 +123,23 @@ export default function InventarioPage() {
                             <div className="text-right">
                                 <p className="text-2xl font-black text-slate-800 tracking-tighter">${(usage['BODEGA PAL']?.costUsd || 0).toFixed(2)}</p>
                                 <p className="text-[10px] font-bold text-gray-400 uppercase">Costo Total a Reponer</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-orange-600 text-white p-6 rounded-[32px] shadow-2xl relative overflow-hidden group">
+                    <div className="relative z-10">
+                        <p className="text-[10px] font-black text-orange-200 uppercase tracking-widest mb-1">Consumo Diario (Franelas)</p>
+                        <h4 className="text-2xl font-black tracking-tight mb-4 text-white uppercase">MICRODURAZNO</h4>
+                        <div className="flex justify-between items-end">
+                            <div>
+                                <p className="text-4xl font-black text-white">{usage['BODEGA MIRCRODURAZNO']?.units || 0}</p>
+                                <p className="text-[10px] font-bold text-orange-100 uppercase">Unidades Usadas</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-2xl font-black text-white tracking-tighter">${(usage['BODEGA MIRCRODURAZNO']?.costUsd || 0).toFixed(2)}</p>
+                                <p className="text-[10px] font-bold text-orange-100 uppercase">Costo Total a Reponer</p>
                             </div>
                         </div>
                     </div>

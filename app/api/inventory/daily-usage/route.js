@@ -12,10 +12,10 @@ export async function GET(req) {
         const tomorrow = new Date(today);
         tomorrow.setDate(tomorrow.getDate() + 1);
 
-        // Buscar logs donde el nombre contenga "FRANELA"
+        // Buscar logs donde el nombre contenga "FRANELA" o "MICRO DURAZNO"
         const logs = await InventoryLog.find({
             date: { $gte: today, $lt: tomorrow },
-            productName: { $regex: /FRANELA/i }
+            productName: { $regex: /FRANELA|MICRO\s*DURAZNO/i }
         }).populate('productId');
 
         const consumption = {};
