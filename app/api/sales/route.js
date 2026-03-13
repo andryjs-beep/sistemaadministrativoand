@@ -43,7 +43,13 @@ export async function POST(req) {
         const bcvUsd = await ExchangeRate.findOne({ type: 'USD' }).sort({ date: -1 });
         const bcvRate = bcvEur?.value || bcvUsd?.value || 36.5;
 
-        // 3. Procesar items y actualizar stock
+        // 3. Generar ID de venta y preparar mapeo de bodegas
+        const saleId = `VEN-${Date.now()}`;
+        const warehouses = await Warehouse.find({});
+        const whMap = {};
+        warehouses.forEach(w => whMap[w._id.toString()] = w.name);
+
+        // 4. Procesar items y actualizar stock
         let totalUsd = 0;
         let totalBs = 0;
         const processedItems = [];
@@ -92,6 +98,8 @@ export async function POST(req) {
 
             // Log de Inventario para Venta
             const seller = await User.findById(userId);
+            const warehouseName = product.warehouseId ? (whMap[product.warehouseId.toString()] || 'Bodega Principal') : 'Bodega Principal';
+
             await InventoryLog.create({
                 productId: product._id,
                 productName: product.name,
@@ -100,7 +108,7 @@ export async function POST(req) {
                 type: 'sale',
                 reason: `Venta ${saleId}`,
                 warehouseId: product.warehouseId,
-                warehouseName: 'Bodega Principal', // Idealmente poblar warehouseId antes
+                warehouseName: warehouseName,
                 userId: userId,
                 username: seller?.username || 'Sistema'
             });
@@ -127,7 +135,6 @@ export async function POST(req) {
         }
 
         // 6. Crear la venta
-        const saleId = `VEN-${Date.now()}`;
         const newSale = await Sale.create({
             saleId,
             userId,
