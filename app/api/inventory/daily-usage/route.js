@@ -8,9 +8,11 @@ export async function GET(req) {
     await dbConnect();
     try {
         const today = new Date();
+        today.setDate(today.getDate() - 7); // Ver últimos 7 días
         today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
+        const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(0, 0, 0, 0);
 
         // Buscar logs donde el nombre contenga "FRANELA" o "MICRO DURAZNO"
         const logs = await InventoryLog.find({

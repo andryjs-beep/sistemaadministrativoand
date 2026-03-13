@@ -96,7 +96,7 @@ export default function InventarioPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
                 <div className="bg-slate-900 text-white p-6 rounded-[32px] shadow-2xl relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consumo Diario (Franelas)</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consumo Reciente (7 días)</p>
                         <h4 className="text-2xl font-black tracking-tight mb-4 text-emerald-400">Bodega CAS</h4>
                         <div className="flex justify-between items-end">
                             <div>
@@ -113,7 +113,7 @@ export default function InventarioPage() {
 
                 <div className="bg-white p-6 rounded-[32px] shadow-xl border border-blue-100 relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Consumo Diario (Franelas)</p>
+                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Consumo Reciente (7 días)</p>
                         <h4 className="text-2xl font-black tracking-tight mb-4 text-slate-800 uppercase">Bodega PAL</h4>
                         <div className="flex justify-between items-end">
                             <div>
@@ -130,7 +130,7 @@ export default function InventarioPage() {
 
                 <div className="bg-orange-600 text-white p-6 rounded-[32px] shadow-2xl relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-[10px] font-black text-orange-200 uppercase tracking-widest mb-1">Consumo Diario (Franelas)</p>
+                        <p className="text-[10px] font-black text-orange-200 uppercase tracking-widest mb-1">Consumo Reciente (7 días)</p>
                         <h4 className="text-2xl font-black tracking-tight mb-4 text-white uppercase">MICRODURAZNO</h4>
                         <div className="flex justify-between items-end">
                             <div>
@@ -147,7 +147,7 @@ export default function InventarioPage() {
 
                 <div className="bg-emerald-500 text-white p-6 rounded-[32px] shadow-2xl flex items-center justify-center text-center">
                     <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-80">Total Consumido Hoy</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-80">Total Reciente (7 días)</p>
                         <p className="text-5xl font-black tracking-tighter leading-none">
                             <span className="text-xl">$</span>{(Object.values(usage).reduce((acc, curr) => acc + curr.costUsd, 0)).toFixed(2)}
                         </p>
