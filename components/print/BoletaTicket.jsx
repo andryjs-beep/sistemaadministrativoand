@@ -30,7 +30,7 @@ const BoletaTicket = ({ sale }) => {
                     {company.email && <p className="text-xs">{company.email}</p>}
                     <div className="border-t border-dashed my-2"></div>
                     <p>Fecha: {new Date(sale.date).toLocaleString()}</p>
-                    <p>ID: {sale.saleId}</p>
+                    <p className="font-bold text-base">{sale.quotationId ? 'COTIZACIÓN' : 'VENTA'}: {sale.quotationId || sale.saleId}</p>
                     {(sale.customerId?.name || sale.customerName) && (
                         <div className="mt-2 text-xs border border-gray-100 p-1 rounded">
                             <p className="font-bold">CLIENTE: {sale.customerId?.name || sale.customerName}</p>
@@ -43,18 +43,24 @@ const BoletaTicket = ({ sale }) => {
 
                 <table className="w-full text-left">
                     <thead>
-                        <tr>
-                            <th>Cant.</th>
-                            <th>Producto</th>
-                            <th className="text-right">Total USD</th>
+                        <tr className="border-b border-black">
+                            <th className="py-1">Cant.</th>
+                            <th className="py-1">Producto</th>
+                            <th className="py-1 text-right">P.U</th>
+                            <th className="py-1 text-right">Total</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="align-top">
                         {sale.items.map((item, idx) => (
-                            <tr key={idx}>
-                                <td>{item.quantity}</td>
-                                <td>{item.productId?.name || 'Producto'}</td>
-                                <td className="text-right">${item.subtotalUsd.toFixed(2)}</td>
+                            <tr key={idx} className="border-b border-gray-100 last:border-none">
+                                <td className="py-1">{item.quantity}</td>
+                                <td className="py-1 pr-2">
+                                    <div className="font-bold text-[11px] leading-tight uppercase">
+                                        {item.productId?.name || item.productName || item.productCode || 'Producto'}
+                                    </div>
+                                </td>
+                                <td className="py-1 text-right whitespace-nowrap">${(item.priceUsd || 0).toFixed(2)}</td>
+                                <td className="py-1 text-right whitespace-nowrap font-bold">${item.subtotalUsd.toFixed(2)}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -64,9 +70,24 @@ const BoletaTicket = ({ sale }) => {
 
                 <div className="space-y-1">
                     <p className="flex justify-between">
-                        <span className="font-bold uppercase text-lg">Total USD:</span>
+                        <span className="font-bold uppercase text-lg">{sale.isCredit ? 'Total a Pagar:' : 'Total USD:'}</span>
                         <span className="font-bold text-lg">${sale.totalUsd.toFixed(2)}</span>
                     </p>
+
+                    {sale.isCredit && (
+                        <>
+                            <p className="flex justify-between text-sm">
+                                <span className="font-bold uppercase">Monto Abonado:</span>
+                                <span>${(sale.totalPaidUsd || 0).toFixed(2)}</span>
+                            </p>
+                            <div className="border-t border-gray-100 my-1"></div>
+                            <p className="flex justify-between text-base">
+                                <span className="font-bold uppercase">Saldo Pendiente:</span>
+                                <span className="font-bold text-red-600">${Math.max(0, sale.totalUsd - (sale.totalPaidUsd || 0)).toFixed(2)}</span>
+                            </p>
+                        </>
+                    )}
+
                     <p className="flex justify-between">
                         <span className="font-bold uppercase text-lg">Total BS:</span>
                         <span className="font-bold text-lg">Bs. {sale.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
@@ -76,11 +97,15 @@ const BoletaTicket = ({ sale }) => {
                 <div className="border-t border-dashed my-2"></div>
 
                 <div className="mt-4">
-                    <p><strong>Método de Pago:</strong> {sale.paymentMethod}</p>
-                    {sale.accountNumber && <p><strong>Cuenta:</strong> {sale.accountNumber}</p>}
+                    {!sale.quotationId && (
+                        <>
+                            <p><strong>Método de Pago:</strong> {sale.paymentMethod}</p>
+                            {sale.accountNumber && <p><strong>Cuenta:</strong> {sale.accountNumber}</p>}
+                        </>
+                    )}
 
                     {/* Multi-pagos detallados */}
-                    {sale.payments && sale.payments.length > 1 && (
+                    {!sale.quotationId && sale.payments && sale.payments.length > 1 && (
                         <div className="mt-2 border-t border-dashed pt-2">
                             <p className="font-bold text-xs uppercase mb-1">Desglose de Pagos:</p>
                             {sale.payments.map((p, idx) => (
@@ -93,16 +118,16 @@ const BoletaTicket = ({ sale }) => {
                     )}
                 </div>
 
-                <div className="text-center mt-6 text-xs italic">
-                    <p>¡Gracias por su compra!</p>
+                <div className="text-center mt-6 text-[10px] italic">
+                    <p>{sale.quotationId ? '¡Atención! El total en Bs. está sujeto a cambios según la tasa de cambio del día al momento del pago.' : '¡Gracias por su compra!'}</p>
                 </div>
             </div>
 
             <style jsx global>{`
         @media print {
-          body > :not(#ticket-print-wrapper) { display: none !important; }
+          body * { visibility: hidden; }
+          #ticket-print-wrapper, #ticket-print-wrapper * { visibility: visible; }
           #ticket-print-wrapper { 
-            display: block !important; 
             position: absolute; 
             left: 0; 
             top: 0; 
@@ -116,9 +141,11 @@ const BoletaTicket = ({ sale }) => {
             max-width: none !important; 
             margin: 0 !important;
           }
-          /* Hide headers/footers browser might add */
-          @page { margin: 0; }
-        }
+          /* Define 80mm (thermal receipt) width, and standard A4 length (cut by thermal printers) */
+          @page { 
+            margin: 0; 
+            size: 72mm 297mm; 
+          }
       `}</style>
         </div>
     );

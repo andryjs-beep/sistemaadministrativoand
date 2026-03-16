@@ -8,6 +8,7 @@ const CATEGORIES = [
     { value: 'alquiler', label: '🏢 Alquiler / Arrendamiento' },
     { value: 'transporte', label: '🚚 Transporte / Fletes' },
     { value: 'nomina', label: '👷 Nómina / Personal' },
+    { value: 'vale', label: '💵 Vale a Empleado' },
     { value: 'otro', label: '📋 Otro' },
 ];
 
@@ -33,6 +34,8 @@ export default function ProveedoresPage() {
     const [editProv, setEditProv] = useState(null);
     const [editExp, setEditExp] = useState(null);
     const [filterDate, setFilterDate] = useState('');
+    const [filterProvider, setFilterProvider] = useState('');
+
 
     useEffect(() => {
         fetchAll();
@@ -167,9 +170,11 @@ export default function ProveedoresPage() {
         setLoading(false);
     };
 
-    const filteredExpenses = filterDate
-        ? expenses.filter(e => new Date(e.date).toISOString().startsWith(filterDate))
-        : expenses;
+    const filteredExpenses = expenses.filter(e => {
+        const matchesDate = filterDate ? new Date(e.date).toISOString().startsWith(filterDate) : true;
+        const matchesProvider = filterProvider ? (e.providerId?._id === filterProvider || e.providerId === filterProvider) : true;
+        return matchesDate && matchesProvider;
+    });
 
     const totalUsd = filteredExpenses.reduce((s, e) => s + (e.amountUsd || 0), 0);
     const totalBs = filteredExpenses.reduce((s, e) => s + (e.amountBs || 0), 0);
@@ -283,8 +288,10 @@ export default function ProveedoresPage() {
                                     </select>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-3">Descripción del Pago</label>
-                                    <input required placeholder="Ej: Compra de hilaza blanca"
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-3">
+                                        {expForm.category === 'vale' ? 'Nombre del Empleado' : 'Descripción del Pago'}
+                                    </label>
+                                    <input required placeholder={expForm.category === 'vale' ? 'Ej: Pedro Pérez - Adelanto' : 'Ej: Compra de hilaza blanca'}
                                         className="w-full p-4 rounded-2xl bg-gray-50 border-none outline-none font-bold text-slate-800 text-xs focus:ring-2 focus:ring-orange-500 transition"
                                         value={expForm.description} onChange={e => setExpForm({ ...expForm, description: e.target.value })} />
                                 </div>
@@ -353,9 +360,20 @@ export default function ProveedoresPage() {
                                 <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">Historial de Gastos</h3>
                                 <span className="text-[10px] font-bold text-slate-400 italic">Ordenado por fecha</span>
                             </div>
-                            <input type="date"
-                                className="p-3 rounded-2xl bg-white border border-gray-200 outline-none font-bold text-slate-600 text-xs shadow-sm focus:ring-2 focus:ring-orange-500 cursor-pointer"
-                                value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
+                            <div className="flex flex-wrap gap-2">
+                                <select
+                                    className="p-3 rounded-2xl bg-white border border-gray-200 outline-none font-bold text-slate-600 text-xs shadow-sm focus:ring-2 focus:ring-orange-500 cursor-pointer"
+                                    value={filterProvider} onChange={(e) => setFilterProvider(e.target.value)}
+                                >
+                                    <option value="">👤 Todos los Proveedores</option>
+                                    {providers.map(p => (
+                                        <option key={p._id} value={p._id}>{p.name}</option>
+                                    ))}
+                                </select>
+                                <input type="date"
+                                    className="p-3 rounded-2xl bg-white border border-gray-200 outline-none font-bold text-slate-600 text-xs shadow-sm focus:ring-2 focus:ring-orange-500 cursor-pointer"
+                                    value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
+                            </div>
                         </div>
                         {filteredExpenses.map(ex => (
                             <div key={ex._id} className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-xl transition-all group relative overflow-hidden">
@@ -471,7 +489,15 @@ export default function ProveedoresPage() {
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex gap-2 shrink-0 border-l border-gray-50 pl-6">
+                                <div className="flex flex-wrap gap-2 shrink-0 border-l border-gray-50 pl-6 h-fit self-center">
+                                    <button onClick={() => {
+                                        setFilterProvider(p._id);
+                                        setTab('gastos');
+                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                        className="p-4 bg-orange-50 text-orange-500 rounded-2xl hover:bg-orange-600 hover:text-white transition shadow-sm font-black text-[10px] uppercase flex items-center gap-2">
+                                        <span>🔍</span> Ver Egresos
+                                    </button>
                                     <button onClick={() => { setProvForm(p); setEditProv(p._id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                                         className="p-4 bg-blue-50 text-blue-500 rounded-2xl hover:bg-blue-600 hover:text-white transition shadow-sm">✏️</button>
                                     <button onClick={async () => { if (confirm('¿Eliminar ficha de proveedor?')) { await fetch(`/api/providers?id=${p._id}`, { method: 'DELETE' }); fetchAll(); } }}

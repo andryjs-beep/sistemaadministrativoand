@@ -1,5 +1,5 @@
 import dbConnect from '@/lib/db';
-import { Sale, Product, CashSession, ExchangeRate, InventoryLog, User } from '@/lib/models';
+import { Sale, Product, CashSession, ExchangeRate, InventoryLog, User, Warehouse } from '@/lib/models';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -55,34 +55,45 @@ export async function POST(req) {
         const processedItems = [];
 
         for (const item of items) {
-            const product = await Product.findById(item.productId);
-            if (!product) throw new Error(`Producto no encontrado: ${item.productId}`);
-            if (product.stock < item.quantity) throw new Error(`Stock insuficiente para: ${product.name}`);
-
-            let unitPrice = product.priceUsd;
+            let productName = item.name;
+            let productCode = item.code;
+            let unitPrice = item.priceUsd;
+            let costUsd = item.costUsd || 0;
             let isWholesale = false;
+            let product = null;
 
-            // Calc total cart quantity to apply wholesale
-            const totalCartQty = items.reduce((acc, currentItem) => acc + (currentItem.quantity || 1), 0);
+            if (!item.isVirtual) {
+                product = await Product.findById(item.productId);
+                if (!product) throw new Error(`Producto no encontrado: ${item.productId}`);
+                if (product.stock < item.quantity) throw new Error(`Stock insuficiente para: ${product.name}`);
 
-            if (product.wholesalePriceUsd > 0 && totalCartQty >= 6) {
-                unitPrice = product.wholesalePriceUsd;
-                isWholesale = true;
+                productName = product.name;
+                productCode = product.code;
+                unitPrice = product.priceUsd;
+                costUsd = product.costUsd || 0;
+
+                // Calc total cart quantity to apply wholesale (solo para productos reales)
+                const totalCartQty = items.reduce((acc, currentItem) => acc + (currentItem.quantity || 1), 0);
+                if (product.wholesalePriceUsd > 0 && totalCartQty >= 6) {
+                    unitPrice = product.wholesalePriceUsd;
+                    isWholesale = true;
+                }
             }
 
             const discountValue = parseFloat(item.discountValue) || 0;
-
             let itemSubtotalUsd = (unitPrice * item.quantity) - discountValue;
             if (itemSubtotalUsd < 0) itemSubtotalUsd = 0;
             const itemSubtotalBs = itemSubtotalUsd * bcvRate;
-            const itemProfit = itemSubtotalUsd - ((product.costUsd || 0) * item.quantity);
+            const itemProfit = itemSubtotalUsd - (costUsd * item.quantity);
 
             processedItems.push({
-                productId: product._id,
+                productId: item.isVirtual ? null : item.productId,
+                productName,
+                productCode,
                 quantity: item.quantity,
                 priceUsd: unitPrice,
                 priceBs: unitPrice * bcvRate,
-                costUsd: product.costUsd || 0,
+                costUsd: costUsd,
                 subtotalUsd: itemSubtotalUsd,
                 subtotalBs: itemSubtotalBs,
                 wholesaleApplied: isWholesale,
@@ -93,25 +104,27 @@ export async function POST(req) {
             totalUsd += itemSubtotalUsd;
             totalBs += itemSubtotalBs;
 
-            product.stock -= item.quantity;
-            await product.save();
+            if (product) {
+                product.stock -= item.quantity;
+                await product.save();
 
-            // Log de Inventario para Venta
-            const seller = await User.findById(userId);
-            const warehouseName = product.warehouseId ? (whMap[product.warehouseId.toString()] || 'Bodega Principal') : 'Bodega Principal';
+                // Log de Inventario para Venta
+                const seller = await User.findById(userId);
+                const warehouseName = product.warehouseId ? (whMap[product.warehouseId.toString()] || 'Bodega Principal') : 'Bodega Principal';
 
-            await InventoryLog.create({
-                productId: product._id,
-                productName: product.name,
-                productCode: product.code,
-                quantity: item.quantity,
-                type: 'sale',
-                reason: `Venta ${saleId}`,
-                warehouseId: product.warehouseId,
-                warehouseName: warehouseName,
-                userId: userId,
-                username: seller?.username || 'Sistema'
-            });
+                await InventoryLog.create({
+                    productId: product._id,
+                    productName: product.name,
+                    productCode: product.code,
+                    quantity: item.quantity,
+                    type: 'sale',
+                    reason: `Venta ${saleId}`,
+                    warehouseId: product.warehouseId,
+                    warehouseName: warehouseName,
+                    userId: userId,
+                    username: seller?.username || 'Sistema'
+                });
+            }
         }
 
         // 4. Calcular pagos realizados (abono inicial)

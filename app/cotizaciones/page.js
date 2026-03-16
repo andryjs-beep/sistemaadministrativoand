@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import BoletaTicket from '@/components/print/BoletaTicket';
 
 export default function CotizacionesPage() {
     const [quotes, setQuotes] = useState([]);
     const [bcvRate, setBcvRate] = useState(36.50);
+    const [selectedQuoteForPrint, setSelectedQuoteForPrint] = useState(null);
 
     useEffect(() => {
         fetchQuotes();
@@ -92,12 +94,13 @@ export default function CotizacionesPage() {
                                         <p className="text-[9px] font-bold text-blue-600 uppercase">Bs. {(q.totalUsd * 1.15 * bcvRate).toLocaleString('es-VE')}</p>
                                     </td>
                                     <td className="p-6">
-                                        <div className="flex justify-center">
+                                        <div className="flex justify-center gap-2">
                                             {q.status === 'open' ? (
                                                 <button onClick={() => convertToSale(q)} className="px-4 py-2 bg-emerald-600 text-white font-black text-[9px] uppercase tracking-widest rounded-xl hover:bg-emerald-700 transition">Facturar</button>
                                             ) : (
-                                                <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">Procesada</span>
+                                                <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest flex items-center">Procesada</span>
                                             )}
+                                            <button onClick={() => setSelectedQuoteForPrint(q)} className="px-4 py-2 bg-blue-600 text-white font-black text-[9px] uppercase tracking-widest rounded-xl hover:bg-blue-700 transition">Imprimir</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -116,9 +119,15 @@ export default function CotizacionesPage() {
                                     <p className="text-[10px] font-bold text-gray-400">{new Date(q.date).toLocaleDateString()}</p>
                                 </div>
                                 {q.status === 'open' ? (
-                                    <button onClick={() => convertToSale(q)} className="p-3 bg-emerald-50 text-emerald-600 rounded-xl font-black text-[9px] uppercase">Facturar ⚡</button>
+                                    <div className="flex flex-col gap-2">
+                                        <button onClick={() => convertToSale(q)} className="p-2 px-3 bg-emerald-50 text-emerald-600 rounded-xl font-black text-[9px] uppercase">Facturar ⚡</button>
+                                        <button onClick={() => setSelectedQuoteForPrint(q)} className="p-2 px-3 bg-blue-50 text-blue-600 rounded-xl font-black text-[9px] uppercase">Imprimir 🖨️</button>
+                                    </div>
                                 ) : (
-                                    <span className="text-[9px] font-black text-gray-300 uppercase">Procesada</span>
+                                    <div className="flex flex-col gap-2 items-end">
+                                        <span className="text-[9px] font-black text-gray-300 uppercase">Procesada</span>
+                                        <button onClick={() => setSelectedQuoteForPrint(q)} className="p-2 px-3 bg-blue-50 text-blue-600 rounded-xl font-black text-[9px] uppercase">Imprimir 🖨️</button>
+                                    </div>
                                 )}
                             </div>
                             <div className="flex justify-between items-end border-t border-gray-50 pt-3">
@@ -139,6 +148,26 @@ export default function CotizacionesPage() {
                     </div>
                 )}
             </div>
+
+            {/* Modal de Ticket de Impresión */}
+            {selectedQuoteForPrint && (
+                <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[200] overflow-y-auto">
+                    <div className="min-h-full flex items-center justify-center p-4 md:p-10">
+                        <div className="bg-white p-6 md:p-10 rounded-[40px] md:rounded-[50px] shadow-2xl max-w-sm w-full relative border-[8px] md:border-[12px] border-slate-50">
+                            <BoletaTicket sale={selectedQuoteForPrint} />
+                            <div className="mt-8 md:mt-10 flex flex-col gap-3 md:gap-4 no-print">
+                                <button onClick={() => { setTimeout(() => window.print(), 100); }} className="w-full py-5 md:py-6 bg-slate-900 text-white font-black rounded-2xl md:rounded-3xl uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform text-xs md:text-sm">🖨️ Imprimir Ticket</button>
+                                <button onClick={() => setSelectedQuoteForPrint(null)} className="w-full py-3 text-gray-400 font-bold uppercase tracking-widest hover:text-red-500 transition-colors text-xs text-center border-t border-gray-100 pt-5">X Cerrar sin Imprimir</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <style jsx global>{`
+                @media print { .no-print { display: none !important; } }
+                ${selectedQuoteForPrint ? 'body { overflow: hidden !important; }' : ''}
+            `}</style>
         </div>
     );
 }

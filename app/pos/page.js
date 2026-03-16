@@ -10,21 +10,34 @@ export default function PosPage() {
     const [search, setSearch] = useState('');
     const [customerSearch, setCustomerSearch] = useState('');
     const [selectedCustomerId, setSelectedCustomerId] = useState('');
-    const [bcvData, setBcvData] = useState({ rate: 36.50, percentage: 0 });
+    const [bcvData, setBcvData] = useState({ rate: 36.50, usdRate: 36.50, percentage: 0 });
+    const [showBannerDialog, setShowBannerDialog] = useState(false);
+    const [bannerDims, setBannerDims] = useState({ width: '', height: '' });
     const [selectedMethods, setSelectedMethods] = useState([]);
     const [methods, setMethods] = useState([]);
     const [lastSale, setLastSale] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [showCartMobile, setShowCartMobile] = useState(false);
-    const [isCredit, setIsCredit] = useState(false);
+    const [transactionType, setTransactionType] = useState('contado'); // 'contado', 'credito', 'cotizacion'
+
+    const [customRate, setCustomRate] = useState(null);
+    const [customUsdRate, setCustomUsdRate] = useState(null);
+    const [showRateDialog, setShowRateDialog] = useState(false);
+    const [tempRateInput, setTempRateInput] = useState({ eur: '', usd: '' });
 
     useEffect(() => {
         fetchProducts();
         fetchCustomers();
         fetchMethods();
         fetchBcv();
-        const interval = setInterval(fetchBcv, 60 * 60 * 1000); // 60 minutos
-        return () => clearInterval(interval);
+        // Auto-refresh products every 30s so stock is always up to date
+        const productInterval = setInterval(fetchProducts, 30000);
+        // User requested near-instant (<5s) updates for Tasa/Ajuste
+        const rateInterval = setInterval(fetchBcv, 3000);
+        return () => {
+            clearInterval(productInterval);
+            clearInterval(rateInterval);
+        };
     }, []);
 
     const fetchProducts = async () => {
@@ -56,22 +69,25 @@ export default function PosPage() {
             const res = await fetch('/api/bcv');
             const json = await res.json();
             if (json.ok && json.data) {
-                // El usuario pidió usar la tasa EURO BCV para los cálculos de venta
                 setBcvData({
                     rate: json.data.EUR || 39.8,
-                    percentage: json.data.percentage || 0 // Percentage might still come from manual POSTs if needed
+                    usdRate: json.data.USD || 36.5,
+                    percentage: json.data.percentage || 0
                 });
             }
         } catch (e) { console.error('Error loading BCV', e); }
     };
 
-    const getAdjustedRate = () => bcvData.rate * (1 + (bcvData.percentage / 100));
+    const getAdjustedRate = () => {
+        const baseRate = customRate !== null ? customRate : bcvData.rate;
+        return baseRate * (1 + (bcvData.percentage / 100));
+    };
 
     const addToCart = (product) => {
-        if (product.stock <= 0) return alert('¡Sin stock disponible!');
+        if (product && product.stock <= 0 && !product.isVirtual) return alert('¡Sin stock disponible!');
         setCart(prev => {
-            const existing = prev.find(item => item._id === product._id);
-            if (existing) {
+            const existing = prev.find(item => item._id === product._id && !item.isVirtual);
+            if (existing && !product.isVirtual) {
                 if (existing.quantity >= product.stock) {
                     alert('No puedes agregar más de lo que hay en stock');
                     return prev;
@@ -79,8 +95,35 @@ export default function PosPage() {
                 const otherItems = prev.filter(item => item._id !== product._id);
                 return [{ ...existing, quantity: existing.quantity + 1 }, ...otherItems];
             }
-            return [{ ...product, quantity: 1, discountValue: 0 }, ...prev];
+            return [{ ...product, quantity: product.quantity || 1, discountValue: 0 }, ...prev];
         });
+    };
+
+    const addBannerToCart = () => {
+        const w = parseFloat(bannerDims.width);
+        const h = parseFloat(bannerDims.height);
+        if (isNaN(w) || isNaN(h) || w <= 0 || h <= 0) return alert('Ingresa medidas válidas');
+
+        const m2 = (w * h) / 10000;
+        const costPerM2 = 6.5;
+        const margin = 1.43; // 43% profit
+        const priceUsd = m2 * costPerM2 * margin;
+
+        const bannerProduct = {
+            _id: `banner-${Date.now()}`,
+            name: `IMPRESIÓN BANNER (${w}x${h}cm)`,
+            code: 'BANNER-IMP',
+            priceUsd: priceUsd,
+            quantity: 1,
+            isVirtual: true,
+            isBanner: true,
+            stock: 999999,
+            dims: { width: w, height: h, m2: m2 }
+        };
+
+        addToCart(bannerProduct);
+        setShowBannerDialog(false);
+        setBannerDims({ width: '', height: '' });
     };
 
     const updateQuantity = (id, delta) => {
@@ -152,7 +195,22 @@ export default function PosPage() {
         return acc + Math.max(0, lineTotal);
     }, 0);
 
-    const totalBs = totalUsd * getAdjustedRate();
+    const getRateForItem = (item) => {
+        if (item.isBanner) {
+            const baseUsd = customUsdRate !== null ? customUsdRate : bcvData.usdRate;
+            return baseUsd * (1 + (bcvData.percentage / 100));
+        }
+        return getAdjustedRate();
+    };
+
+    const totalBs = cart.reduce((acc, item) => {
+        const { price } = calculateItemPrice(item, cart);
+        let qty = typeof item.quantity === 'number' ? item.quantity : 1;
+        let lineTotalUsd = (price * qty) - (item.discountValue || 0);
+        const rate = getRateForItem(item);
+        return acc + (Math.max(0, lineTotalUsd) * rate);
+    }, 0);
+
     const totalAdjustedUsd = totalUsd * (1 + (bcvData.percentage / 100));
 
     // --- Multi Payment Logic ---
@@ -162,7 +220,8 @@ export default function PosPage() {
             if (exists) {
                 return prev.filter(p => p.methodName !== method.name);
             }
-            return [...prev, { methodName: method.name, currency: method.currency || 'USD', amount: 0 }];
+            const isCredito = transactionType === 'credito';
+            return [...prev, { methodName: method.name, currency: method.currency || 'USD', amount: isCredito ? 0 : 0 }];
         });
     };
 
@@ -185,17 +244,16 @@ export default function PosPage() {
     const handleSale = async () => {
         if (cart.length === 0) return alert('El carrito está vacío');
 
-        // Ventas a crédito requieren cliente obligatoriamente
-        if (isCredit && !selectedCustomerId) {
+        // Validaciones previas
+        if (transactionType === 'credito' && !selectedCustomerId) {
             return alert('Para ventas a crédito DEBES seleccionar un cliente específico.');
         }
 
-        // Si es de contado, debe cubrir el total
-        if (!isCredit) {
+        if (transactionType === 'contado') {
             if (selectedMethods.length === 0) return alert('Debes seleccionar al menos un método de pago');
 
-            // Crear una copia para validación local sin depender del estado asíncrono
-            let localMethods = [...selectedMethods];
+            // Validar que el monto asignado cubra el total en contado
+            const localMethods = selectedMethods.length > 0 ? [...selectedMethods] : [{ methodName: 'EFECTIVO', amount: 0, currency: 'USD' }];
 
             // Auto-completar monto si solo hay uno y está en 0
             if (localMethods.length === 1 && localMethods[0].amount === 0) {
@@ -210,7 +268,7 @@ export default function PosPage() {
 
             const localRemaining = totalUsd - localAssigned;
 
-            if (Math.abs(localRemaining) > 0.01) {
+            if (Math.abs(localRemaining) > 0.01 && transactionType === 'contado') {
                 return alert(`Para venta de contado el monto debe ser exacto.\nTotal: $${totalUsd.toFixed(2)}\nAsignado: $${localAssigned.toFixed(2)}\nFalta: $${localRemaining.toFixed(2)} USD`);
             }
         }
@@ -219,8 +277,11 @@ export default function PosPage() {
 
         try {
             const storedUser = JSON.parse(localStorage.getItem('user'));
+            const isQuote = transactionType === 'cotizacion';
+            const endpoint = isQuote ? '/api/quotations' : '/api/sales';
+
             const paymentsPayload = selectedMethods
-                .filter(p => p.amount > 0)
+                .filter(p => !isQuote && p.amount > 0)
                 .map(p => {
                     const isBs = (p.currency || '').toUpperCase().includes('BS');
                     return {
@@ -231,42 +292,69 @@ export default function PosPage() {
                     };
                 });
 
-            const res = await fetch('/api/sales', {
+            const payload = {
+                items: cart.map(item => ({
+                    productId: item._id,
+                    quantity: item.quantity,
+                    discountValue: item.discountValue,
+                    priceUsd: item.priceUsd,
+                    name: item.name,
+                    code: item.code,
+                    isVirtual: !!item.isVirtual
+                })),
+                customerId: selectedCustomerId,
+                userId: storedUser?._id,
+            };
+
+            if (!isQuote) {
+                payload.payments = paymentsPayload;
+                payload.isCredit = transactionType === 'credito';
+            }
+
+            const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    items: cart.map(item => ({
-                        productId: item._id,
-                        quantity: item.quantity,
-                        discountValue: item.discountValue
-                    })),
-                    payments: paymentsPayload,
-                    customerId: selectedCustomerId,
-                    userId: storedUser?._id,
-                    isCredit: isCredit
-                })
+                body: JSON.stringify(payload)
             });
 
             if (res.ok) {
-                const sale = await res.json();
-                setLastSale(sale);
+                const data = await res.json();
+                setLastSale(data);
                 setCart([]);
                 setSelectedCustomerId('');
                 setCustomerSearch('');
                 setSelectedMethods([]);
-                setIsCredit(false);
+                setTransactionType('contado');
                 fetchProducts();
-                alert(isCredit ? 'Venta a crédito registrada con éxito' : '¡Venta completada con éxito!');
+
+                let msg = '¡Venta completada con éxito!';
+                if (transactionType === 'credito') msg = 'Venta a crédito registrada con éxito';
+                if (transactionType === 'cotizacion') msg = '¡Cotización generada con éxito!';
+                alert(msg);
             } else {
                 const err = await res.json();
-                alert(`Error: ${err.error || 'No se pudo procesar la venta'}`);
+                alert(`Error: ${err.error || 'No se pudo procesar la solicitud'}`);
             }
         } catch (e) {
-            alert('Error de conexión con el servidor');
+            console.error(e);
+            alert('Error al conectar con el servidor');
         } finally {
             setIsProcessing(false);
         }
     };
+
+    const handleCustomRateUpdate = () => {
+        const nrEur = parseFloat(tempRateInput.eur);
+        const nrUsd = parseFloat(tempRateInput.usd);
+        if (isNaN(nrEur) || nrEur <= 0) setCustomRate(null);
+        else setCustomRate(nrEur);
+
+        if (isNaN(nrUsd) || nrUsd <= 0) setCustomUsdRate(null);
+        else setCustomUsdRate(nrUsd);
+
+        setShowRateDialog(false);
+    };
+
 
     const filteredProducts = products.filter(p =>
         (p.name || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -288,18 +376,31 @@ export default function PosPage() {
 
                     <div className="flex bg-gray-100 p-1 rounded-xl">
                         <button
-                            onClick={() => setIsCredit(false)}
-                            className={`px-4 py-2 rounded-lg text-xs font-black uppercase transition-all ${!isCredit ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400'}`}
+                            onClick={() => setTransactionType('contado')}
+                            className={`px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-black uppercase transition-all ${transactionType === 'contado' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 font-bold'}`}
                         >
                             Contado
                         </button>
                         <button
-                            onClick={() => setIsCredit(true)}
-                            className={`px-4 py-2 rounded-lg text-xs font-black uppercase transition-all ${isCredit ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400'}`}
+                            onClick={() => setTransactionType('credito')}
+                            className={`px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-black uppercase transition-all ${transactionType === 'credito' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-400 font-bold'}`}
                         >
                             Crédito
                         </button>
+                        <button
+                            onClick={() => setTransactionType('cotizacion')}
+                            className={`px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-black uppercase transition-all ${transactionType === 'cotizacion' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-400 font-bold'}`}
+                        >
+                            Cotización
+                        </button>
                     </div>
+
+                    <button
+                        onClick={() => setShowBannerDialog(true)}
+                        className="bg-blue-600 text-white px-4 py-2.5 rounded-xl text-xs font-black uppercase shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2"
+                    >
+                        <span>🖼️</span> Banner
+                    </button>
 
                     <div className="relative w-full md:w-64">
                         <input
@@ -314,7 +415,7 @@ export default function PosPage() {
                         />
                         {customerSearch && !selectedCustomerId && (
                             <div className="absolute top-full left-0 w-full md:w-[320px] bg-white shadow-2xl rounded-xl mt-1 max-h-60 overflow-y-auto z-[60] border border-gray-100">
-                                {!isCredit && (
+                                {transactionType !== 'credito' && (
                                     <button
                                         className="w-full text-left p-3 hover:bg-gray-50 text-xs font-black uppercase text-blue-600 border-b"
                                         onClick={() => { setSelectedCustomerId(''); setCustomerSearch(''); }}
@@ -338,9 +439,23 @@ export default function PosPage() {
                 </div>
 
                 <div className="flex items-center justify-between w-full md:w-auto gap-6">
-                    <div className="text-left md:text-right flex-1">
-                        <span className="text-xs font-black text-gray-400 uppercase block tracking-widest">Tasa Euro (BCV)</span>
-                        <span className="text-xl font-black text-emerald-600">Bs. {bcvData.rate.toFixed(2)}</span>
+                    <div
+                        className="text-left md:text-right flex-1 cursor-pointer group hover:opacity-80 transition-opacity"
+                        onClick={() => {
+                            setTempRateInput({
+                                eur: (customRate || bcvData.rate).toString(),
+                                usd: (customUsdRate || bcvData.usdRate).toString()
+                            });
+                            setShowRateDialog(true);
+                        }}
+                    >
+                        <span className="text-[10px] font-black text-gray-400 uppercase block tracking-widest leading-none mb-1">
+                            {customRate ? '⚠️ Tasa Manual' : 'Tasa Euro (BCV)'}
+                        </span>
+                        <div className="flex items-center justify-end gap-2">
+                            <span className="text-xl font-black text-emerald-600">Bs. {(customRate || bcvData.rate).toFixed(2)}</span>
+                            <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity">✏️</span>
+                        </div>
                     </div>
                     <button
                         onClick={() => setShowCartMobile(!showCartMobile)}
@@ -522,10 +637,12 @@ export default function PosPage() {
                                 </div>
                             </div>
 
-                            {/* Distribución de Multi-Pago */}
-                            {selectedMethods.length > 1 && (
-                                <div className="mt-4 space-y-3 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
-                                    <p className="text-xs font-black text-blue-600 uppercase tracking-widest text-center">Distribuir Monto</p>
+                            {/* Distribución de Multi-Pago o Abono en Crédito */}
+                            {(selectedMethods.length > 1 || (transactionType === 'credito' && selectedMethods.length === 1)) && (
+                                <div className="mt-4 space-y-3 bg-blue-50/50 p-4 rounded-2xl border border-blue-100 italic transition-all animate-in zoom-in-95">
+                                    <p className="text-xs font-black text-blue-600 uppercase tracking-widest text-center">
+                                        {transactionType === 'credito' ? 'Monto del Abono' : 'Distribuir Monto'}
+                                    </p>
                                     {selectedMethods.map(pm => {
                                         const isBs = (pm.currency || '').toUpperCase().includes('BS');
                                         const currLabel = isBs ? 'Bs.' : '$';
@@ -558,25 +675,133 @@ export default function PosPage() {
                                         : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200 ring-4 ring-blue-600/10'
                                         }`}
                                 >
-                                    {isProcessing ? '⏳ PROCESANDO...' : (selectedMethods.length > 0 ? '🛒 FACTURAR' : '⚠️ SELECCIONA PAGO')}
+                                    {isProcessing ? '⏳ PROCESANDO...' : (
+                                        transactionType === 'cotizacion' ? '📋 GENERAR COTIZACIÓN' :
+                                            transactionType === 'credito' ? '💳 FACTURAR CRÉDITO' :
+                                                '🛒 FACTURAR'
+                                    )}
                                 </button>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Float cart button for mobile */}
-                {
-                    !showCartMobile && cart.length > 0 && (
-                        <button
-                            onClick={() => setShowCartMobile(true)}
-                            className="md:hidden fixed bottom-6 right-6 z-[40] bg-blue-600 text-white p-5 rounded-full shadow-[0_10px_40px_rgba(37,99,235,0.6)] flex items-center justify-center gap-3 font-black uppercase tracking-widest text-sm animate-in slide-in-from-bottom active:scale-95 transition-all"
-                        >
-                            <span className="text-xl">🛒</span>
-                            Ver Carrito ({cart.length})
-                        </button>
-                    )
-                }
+                {/* Modal de Banner */}
+                {showBannerDialog && (
+                    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[150] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden border-8 border-slate-50">
+                            <div className="p-8">
+                                <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter mb-4 text-center">Cotizar Impresión</h3>
+                                <p className="text-xs font-bold text-gray-400 text-center mb-8 uppercase tracking-widest">Ingrese medidas en centímetros</p>
+
+                                <div className="grid grid-cols-2 gap-6 mb-8">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Ancho (cm)</label>
+                                        <input
+                                            type="number"
+                                            placeholder="000"
+                                            className="w-full bg-gray-50 border-none rounded-2xl p-5 text-xl font-black text-slate-800 focus:ring-4 focus:ring-blue-100 outline-none text-center"
+                                            value={bannerDims.width}
+                                            onChange={(e) => setBannerDims({ ...bannerDims, width: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Alto (cm)</label>
+                                        <input
+                                            type="number"
+                                            placeholder="000"
+                                            className="w-full bg-gray-50 border-none rounded-2xl p-5 text-xl font-black text-slate-800 focus:ring-4 focus:ring-blue-100 outline-none text-center"
+                                            value={bannerDims.height}
+                                            onChange={(e) => setBannerDims({ ...bannerDims, height: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                {bannerDims.width && bannerDims.height && (
+                                    <div className="bg-blue-50 p-6 rounded-3xl mb-8 border border-blue-100 italic transition-all animate-in zoom-in-95">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-xs font-bold text-blue-400 uppercase tracking-widest">Superficie:</span>
+                                            <span className="text-lg font-black text-blue-600">{((bannerDims.width * bannerDims.height) / 10000).toFixed(2)} m²</span>
+                                        </div>
+                                        <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm">
+                                            <span className="text-xs font-black text-slate-400 uppercase tracking-widest tracking-tighter">Precio de Venta ($):</span>
+                                            <span className="text-2xl font-black text-emerald-600">${(((bannerDims.width * bannerDims.height) / 10000) * 6.5 * 1.43).toFixed(2)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center mt-4 px-2 opacity-30 group hover:opacity-100 transition-opacity">
+                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Costo Proveedor:</span>
+                                            <span className="text-[8px] font-black text-slate-500">${(((bannerDims.width * bannerDims.height) / 10000) * 6.5).toFixed(2)}</span>
+                                        </div>
+                                        <p className="text-[10px] text-center text-blue-400 font-bold mt-2 uppercase tracking-tighter">Calculado a tasa BCV Dólar + 43% Ganancia</p>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-4">
+                                    <button
+                                        onClick={() => setShowBannerDialog(false)}
+                                        className="flex-1 py-4 font-black text-xs uppercase tracking-widest text-gray-400 hover:text-red-500 transition-colors"
+                                    > Cancelar </button>
+                                    <button
+                                        onClick={addBannerToCart}
+                                        className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-black active:scale-95 transition-all"
+                                    > Agregar al Carrito </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Modal de Tasa Manual */}
+                {showRateDialog && (
+                    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                        <div className="bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden border border-gray-100 animate-in zoom-in-95 duration-300">
+                            <div className="bg-slate-900 p-8 text-white relative">
+                                <h3 className="text-2xl font-black uppercase tracking-tighter italic">Editar <span className="text-blue-400">Tasas</span></h3>
+                                <p className="text-[10px] font-black uppercase tracking-widest opacity-50 mt-1">Solo para esta venta</p>
+                                <button onClick={() => setShowRateDialog(false)} className="absolute top-6 right-6 text-2xl opacity-50 hover:opacity-100 transition-opacity">✕</button>
+                            </div>
+
+                            <div className="p-8">
+                                <div className="space-y-6 mb-8">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Tasa Euro (Base)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-5 top-1/2 -translate-y-1/2 font-black text-slate-300">Bs.</span>
+                                            <input
+                                                type="number" step="0.01"
+                                                className="w-full bg-gray-50 border-none rounded-2xl p-5 pl-12 text-xl font-black text-slate-800 focus:ring-4 focus:ring-blue-100 outline-none"
+                                                value={tempRateInput.eur}
+                                                onChange={(e) => setTempRateInput({ ...tempRateInput, eur: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Tasa Dólar (Para Banners)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-5 top-1/2 -translate-y-1/2 font-black text-slate-300">Bs.</span>
+                                            <input
+                                                type="number" step="0.01"
+                                                className="w-full bg-gray-50 border-none rounded-2xl p-5 pl-12 text-xl font-black text-slate-800 focus:ring-4 focus:ring-blue-100 outline-none"
+                                                value={tempRateInput.usd}
+                                                onChange={(e) => setTempRateInput({ ...tempRateInput, usd: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-3">
+                                    <button
+                                        onClick={handleCustomRateUpdate}
+                                        className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-black active:scale-95 transition-all"
+                                    > Aplicar Cambios </button>
+                                    <button
+                                        onClick={() => { setCustomRate(null); setCustomUsdRate(null); setShowRateDialog(false); }}
+                                        className="w-full py-4 text-xs font-black text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors"
+                                    > Restablecer a BCV Oficial </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Modal de Ticket de Impresión */}
                 {

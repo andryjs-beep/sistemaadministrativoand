@@ -13,6 +13,11 @@ export default function ReportesPage() {
     const [reportType, setReportType] = useState('daily');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [showAll, setShowAll] = useState(false);
+    const [providers, setProviders] = useState([]);
+    const [selectedProvider, setSelectedProvider] = useState('');
+
 
     const fetchReport = useCallback(async () => {
         setLoading(true);
@@ -25,16 +30,28 @@ export default function ReportesPage() {
             } else if (reportType === 'range') {
                 url += `&dateFrom=${dateFrom}&dateTo=${dateTo}`;
             }
+            if (searchTerm) {
+                url += `&search=${encodeURIComponent(searchTerm)}`;
+            }
+            if (selectedProvider) {
+                url += `&providerId=${selectedProvider}`;
+            }
             const res = await fetch(url);
             const json = await res.json();
             setData(json);
         } catch (e) { console.error(e); }
         setLoading(false);
-    }, [reportType, dateFrom, dateTo]);
+    }, [reportType, dateFrom, dateTo, searchTerm]);
 
     useEffect(() => {
         const stored = JSON.parse(localStorage.getItem('user'));
         if (stored) setUser(stored);
+
+        // Fetch Providers
+        fetch('/api/providers').then(res => res.json()).then(p => {
+            if (Array.isArray(p)) setProviders(p);
+        }).catch(e => console.error(e));
+
         fetchReport();
     }, [fetchReport]);
 
@@ -79,8 +96,13 @@ export default function ReportesPage() {
             {/* Filter Bar */}
             <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm mb-8 flex flex-wrap items-center gap-4 no-print">
                 <div className="flex bg-gray-100 p-1.5 rounded-2xl">
-                    {[['daily', '📅 Hoy'], ['range', '📆 Rango']].map(([key, label]) => (
-                        <button key={key} onClick={() => setReportType(key)}
+                    {[['daily', '📅 Hoy'], ['range', '📆 Rango'], ['all', '📚 Todas']].map(([key, label]) => (
+                        <button key={key} onClick={() => {
+                            setReportType(key);
+                            if (key === 'all') {
+                                setShowAll(true);
+                            }
+                        }}
                             className={`px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${reportType === key ? 'bg-white text-slate-800 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
                             {label}
                         </button>
@@ -95,8 +117,30 @@ export default function ReportesPage() {
                             value={dateTo} onChange={e => setDateTo(e.target.value)} />
                     </div>
                 )}
+                <div className="flex-1 min-w-[150px]">
+                    <select
+                        className="w-full p-3 rounded-xl bg-gray-100 border-none outline-none font-bold text-slate-800 text-xs focus:ring-2 focus:ring-blue-500 transition"
+                        value={selectedProvider}
+                        onChange={e => setSelectedProvider(e.target.value)}
+                    >
+                        <option value="">👤 Todos los Proveedores</option>
+                        {providers.map(p => (
+                            <option key={p._id} value={p._id}>{p.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="flex-1 min-w-[200px] relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-40">🔍</span>
+                    <input
+                        type="text"
+                        placeholder="Buscar por cliente o teléfono..."
+                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-gray-100 border-none outline-none font-bold text-slate-800 text-xs focus:ring-2 focus:ring-blue-500 transition"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                    />
+                </div>
                 <button onClick={fetchReport} disabled={loading}
-                    className="ml-auto px-8 py-3 bg-blue-600 text-white font-black rounded-xl text-[10px] uppercase tracking-widest hover:bg-blue-700 transition disabled:opacity-50">
+                    className="px-8 py-3 bg-blue-600 text-white font-black rounded-xl text-[10px] uppercase tracking-widest hover:bg-blue-700 transition disabled:opacity-50">
                     {loading ? 'Generando...' : 'Actualizar'}
                 </button>
             </div>
@@ -137,11 +181,16 @@ export default function ReportesPage() {
             </div>
 
             {/* Secondary Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
                 <div className="bg-red-50 p-6 rounded-[32px] border border-red-100 flex flex-col justify-center">
                     <p className="text-[9px] font-black text-red-400 uppercase tracking-widest mb-1">Gastos / Egresos</p>
                     <p className="text-xl font-black text-red-600">${(s.spentUsd || 0).toFixed(2)} <span className="text-[10px] text-red-400">USD</span></p>
                     <p className="text-lg font-black text-red-500 mt-1">Bs. {(s.spentBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div className="bg-amber-50 p-6 rounded-[32px] border border-amber-100 flex flex-col justify-center">
+                    <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-1">Vales a Empleados</p>
+                    <p className="text-xl font-black text-amber-600">${(s.totalValesUsd || 0).toFixed(2)} <span className="text-[10px] text-amber-500">USD</span></p>
+                    <p className="text-lg font-black text-amber-500 mt-1">Bs. {(s.totalValesBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
                 </div>
                 <div className="bg-slate-900 p-6 rounded-[32px] text-white flex flex-col justify-center">
                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Balance Real (Neto)</p>
@@ -257,8 +306,16 @@ export default function ReportesPage() {
             {/* Sales Detail table */}
             <div className="bg-white rounded-[40px] border border-gray-100 shadow-xl overflow-hidden mb-12">
                 <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
-                    <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest text-blue-600">Auditoría de Ventas (Ingresos)</h3>
-                    <span className="text-[10px] font-black text-gray-400">Últimas operativas</span>
+                    <div>
+                        <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest text-blue-600">Auditoría de Ventas (Ingresos)</h3>
+                        <p className="text-[10px] font-black text-gray-400 mt-1">{showAll ? 'Mostrando todas las facturas' : 'Mostrando últimas 10 facturas'}</p>
+                    </div>
+                    <button
+                        onClick={() => setShowAll(!showAll)}
+                        className="px-6 py-2.5 bg-white border border-gray-200 text-slate-700 font-black rounded-xl text-[10px] uppercase tracking-widest hover:bg-gray-100 transition shadow-sm"
+                    >
+                        {showAll ? 'Ver menos' : 'Ver todas'}
+                    </button>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full">
@@ -270,31 +327,51 @@ export default function ReportesPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {(data?.sales || []).map(sale => (
-                                <tr key={sale._id} className="hover:bg-blue-50/30 transition-colors group">
-                                    <td className="p-3">
-                                        <p className="text-xs font-black text-slate-800 tracking-tighter uppercase">{sale.saleId}</p>
-                                        <span className="text-[9px] font-bold text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded tracking-widest">{sale.status === 'paid' ? 'PAGADA' : 'CRÉDITO'}</span>
-                                    </td>
-                                    <td className="p-3">
-                                        <p className="text-sm font-black text-slate-700 uppercase">{sale.customerId?.name || sale.customerName || 'Venta Rápida'}</p>
-                                        <p className="text-[10px] font-bold text-gray-400 italic">{(sale.customerId?.phone || sale.customerPhone) || 'Sin Teléfono'}</p>
-                                    </td>
-                                    <td className="p-3 text-sm font-bold text-slate-600">{new Date(sale.date).toLocaleDateString('es-VE')}</td>
-                                    <td className="p-3 text-xs font-black text-blue-500 italic">{sale.exchangeRate || (sale.totalBs / sale.totalUsd).toFixed(2)}</td>
-                                    <td className="p-3 font-black text-emerald-600 text-base tracking-tighter">${(sale.totalUsd || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                    <td className="p-3 font-black text-slate-800 text-sm">Bs. {(sale.totalBs || 0).toLocaleString('es-VE')}</td>
-                                    <td className="p-3">
-                                        <div className="flex gap-2">
-                                            <button onClick={() => setDetailSale(sale)} className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-sm hover:bg-blue-600 hover:text-white transition">👁️</button>
-                                            <button onClick={() => setPrintSale(sale)} className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-sm hover:bg-blue-600 hover:text-white transition">🖨️</button>
-                                            {user?.role === 'admin' && (
-                                                <button onClick={() => deleteSale(sale._id)} className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-sm hover:bg-red-600 hover:text-white transition">🗑️</button>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
+                            {(() => {
+                                const filteredSales = (data?.sales || []).filter(sale => {
+                                    const name = (sale.customerId?.name || sale.customerName || '').toLowerCase();
+                                    const phone = (sale.customerId?.phone || sale.customerPhone || '').toLowerCase();
+                                    const term = searchTerm.toLowerCase();
+                                    return name.includes(term) || phone.includes(term);
+                                });
+
+                                const displayedSales = showAll ? filteredSales : filteredSales.slice(0, 10);
+
+                                return displayedSales.map(sale => {
+                                    const paidUsd = (sale.payments || []).reduce((acc, p) => (p.currency === 'USD' ? acc + (p.amountUsd || 0) : acc), 0);
+                                    const paidBs = (sale.payments || []).reduce((acc, p) => (p.currency !== 'USD' ? acc + (p.amountBs || 0) : acc), 0);
+
+                                    return (
+                                        <tr key={sale._id} className="hover:bg-blue-50/30 transition-colors group">
+                                            <td className="p-3">
+                                                <p className="text-xs font-black text-slate-800 tracking-tighter uppercase">{sale.saleId}</p>
+                                                <span className="text-[9px] font-bold text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded tracking-widest">{sale.status === 'paid' ? 'PAGADA' : 'CRÉDITO'}</span>
+                                            </td>
+                                            <td className="p-3">
+                                                <p className="text-sm font-black text-slate-700 uppercase">{sale.customerId?.name || sale.customerName || 'Venta Rápida'}</p>
+                                                <p className="text-[10px] font-bold text-gray-400 italic">{(sale.customerId?.phone || sale.customerPhone) || 'Sin Teléfono'}</p>
+                                            </td>
+                                            <td className="p-3 text-sm font-bold text-slate-600">{new Date(sale.date).toLocaleDateString('es-VE')}</td>
+                                            <td className="p-3 text-xs font-black text-blue-500 italic">{sale.exchangeRate || (sale.totalBs / sale.totalUsd).toFixed(2)}</td>
+                                            <td className="p-3 font-black text-emerald-600 text-base tracking-tighter">
+                                                {paidUsd > 0 ? `$${paidUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—'}
+                                            </td>
+                                            <td className="p-3 font-black text-slate-800 text-sm">
+                                                {paidBs > 0 ? `Bs. ${paidBs.toLocaleString('es-VE')}` : '—'}
+                                            </td>
+                                            <td className="p-3">
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => setDetailSale(sale)} className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-sm hover:bg-blue-600 hover:text-white transition">👁️</button>
+                                                    <button onClick={() => setPrintSale(sale)} className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-sm hover:bg-blue-600 hover:text-white transition">🖨️</button>
+                                                    {user?.role === 'admin' && (
+                                                        <button onClick={() => deleteSale(sale._id)} className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-sm hover:bg-red-600 hover:text-white transition">🗑️</button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                });
+                            })()}
                         </tbody>
                     </table>
                     {(!data?.sales || data.sales.length === 0) && (

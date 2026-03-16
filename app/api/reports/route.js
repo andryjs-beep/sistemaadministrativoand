@@ -10,60 +10,126 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const type = searchParams.get('type') || 'daily';
         const sessionId = searchParams.get('sessionId');
-        const userId = searchParams.get('userId'); // Nueva opción de filtrado por usuario
+        const userId = searchParams.get('userId');
         const dateFrom = searchParams.get('dateFrom');
         const dateTo = searchParams.get('dateTo');
+        const search = searchParams.get('search');
+        const providerId = searchParams.get('providerId');
 
         let saleQuery = {};
         let expenseQuery = {};
+        let searchIds = [];
+
+        if (search) {
+            // Si hay búsqueda, buscamos clientes que coincidan
+            const customers = await Customer.find({
+                $or: [
+                    { name: { $regex: search, $options: 'i' } },
+                    { phone: { $regex: search, $options: 'i' } }
+                ]
+            }).select('_id');
+            searchIds = customers.map(c => c._id);
+        }
 
         if (type === 'session' && sessionId) {
             saleQuery = { cashSessionId: sessionId };
             expenseQuery = { cashSessionId: sessionId };
         } else if (type === 'daily' && dateFrom && dateTo) {
-            saleQuery = { date: { $gte: new Date(dateFrom), $lte: new Date(dateTo) } };
-            expenseQuery = { date: { $gte: new Date(dateFrom), $lte: new Date(dateTo) } };
+            const start = new Date(dateFrom);
+            const end = new Date(dateTo);
+            saleQuery = {
+                $or: [
+                    { date: { $gte: start, $lte: end } },
+                    { "payments.date": { $gte: start, $lte: end } }
+                ]
+            };
+            expenseQuery = { date: { $gte: start, $lte: end } };
         } else if (type === 'daily') {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const tomorrow = new Date(today);
             tomorrow.setDate(tomorrow.getDate() + 1);
-            saleQuery = { date: { $gte: today, $lt: tomorrow } };
+            saleQuery = {
+                $or: [
+                    { date: { $gte: today, $lt: tomorrow } },
+                    { "payments.date": { $gte: today, $lt: tomorrow } }
+                ]
+            };
             expenseQuery = { date: { $gte: today, $lt: tomorrow } };
         } else if (type === 'range' && dateFrom && dateTo) {
             const from = new Date(dateFrom);
             from.setHours(0, 0, 0, 0);
             const to = new Date(dateTo);
             to.setHours(23, 59, 59, 999);
-            saleQuery = { date: { $gte: from, $lte: to } };
+            saleQuery = {
+                $or: [
+                    { date: { $gte: from, $lte: to } },
+                    { "payments.date": { $gte: from, $lte: to } }
+                ]
+            };
             expenseQuery = { date: { $gte: from, $lte: to } };
+        } else if (type === 'all') {
+            saleQuery = {};
+            expenseQuery = {};
+        }
+
+        // Si hay búsqueda, el filtro de búsqueda prevalece sobre el de fecha si es una búsqueda global
+        if (search) {
+            saleQuery.$or = [
+                { customerId: { $in: searchIds } },
+                { saleId: { $regex: search, $options: 'i' } }
+            ];
+            // Si el tipo es 'all', no aplicamos filtros de fecha
+            if (type === 'all' || !dateFrom) {
+                delete saleQuery.date;
+            }
+        }
+
+        // Aplicar filtro de proveedor si existe
+        if (providerId) {
+            expenseQuery.providerId = providerId;
         }
 
         // Aplicar filtro de usuario si existe (Vendedores solo ven lo suyo)
         if (userId) {
             saleQuery.userId = userId;
-            // Para egresos, solo filtramos si el egreso tiene un usuario asociado (opcional según modelo)
-            // expenseQuery.userId = userId; 
         }
 
         const [sales, expenses, cashSessions, allPaymentMethods, exchanges] = await Promise.all([
             Sale.find(saleQuery)
                 .populate('items.productId', 'name code costUsd')
                 .populate('customerId', 'name phone idNumber')
-                .sort({ date: -1 }),
+                .sort({ date: -1 })
+                .limit(type === 'all' ? 500 : 2000), // Limitar para no saturar memoria
             Expense.find(expenseQuery)
                 .populate('providerId', 'name rif')
                 .sort({ date: -1 }),
             CashSession.find({}).sort({ openedAt: -1 }).limit(20),
             PaymentMethod.find({}),
-            InternalExchange.find(type === 'session' && sessionId ? { sessionId } : expenseQuery) // use same time query for exchanges
+            InternalExchange.find(type === 'session' && sessionId ? { sessionId } : expenseQuery)
         ]);
 
+        // Helper to check if a date is within range (if range defined)
+        const inRange = (d) => {
+            if (type === 'all' || !saleQuery.$or) return true;
+            const dt = new Date(d);
+            // Extraer el rango de saleQuery.$or
+            const range = saleQuery.$or.find(q => q.date)?.date || saleQuery.$or.find(q => q["payments.date"])?.["payments.date"];
+            if (!range) return true;
+            return dt >= range.$gte && dt <= (range.$lte || range.$lt);
+        };
+
         // Aggregate totals
-        const totalSalesUsd = sales.reduce((sum, s) => sum + (s.totalUsd || 0), 0);
-        const totalSalesBs = sales.reduce((sum, s) => sum + (s.totalBs || 0), 0);
-        const totalExpensesUsd = expenses.reduce((sum, e) => sum + (e.amountUsd || 0), 0);
-        const totalExpensesBs = expenses.reduce((sum, e) => sum + (e.amountBs || 0), 0);
+        const totalSalesUsd = sales.reduce((sum, s) => inRange(s.date) ? sum + (s.totalUsd || 0) : sum, 0);
+        const totalSalesBs = sales.reduce((sum, s) => inRange(s.date) ? sum + (s.totalBs || 0) : sum, 0);
+        const realExpenses = expenses.filter(e => e.category !== 'vale');
+        const vales = expenses.filter(e => e.category === 'vale');
+
+        const totalExpensesUsd = realExpenses.reduce((sum, e) => sum + (e.amountUsd || 0), 0);
+        const totalExpensesBs = realExpenses.reduce((sum, e) => sum + (e.amountBs || 0), 0);
+
+        const totalValesUsd = vales.reduce((sum, e) => sum + (e.amountUsd || 0), 0);
+        const totalValesBs = vales.reduce((sum, e) => sum + (e.amountBs || 0), 0);
 
         // ... (Profit calculations remain the same) ...
         let totalCostOfGoods = 0;
@@ -72,6 +138,7 @@ export async function GET(req) {
         let discountedSalesCount = 0;
 
         sales.forEach(sale => {
+            if (!inRange(sale.date)) return; // Only count profit for new sales in range
             sale.items?.forEach(item => {
                 const cost = item.costUsd || item.productId?.costUsd || 0;
                 const itemCost = cost * (item.quantity || 0);
@@ -117,10 +184,11 @@ export async function GET(req) {
             if (s.payments && s.payments.length > 0) {
                 // Multi-payment or detailed payments array
                 s.payments.forEach(p => {
+                    if (!inRange(p.date)) return; // Only count payment if IT occurred in range
                     processPayment(p.method || 'Otro', parseFloat(p.amountUsd || 0), parseFloat(p.amountBs || 0));
                 });
-            } else {
-                // Legacy support for single payment method on older sales
+            } else if (inRange(s.date)) {
+                // Legacy support (older sales without payments array)
                 processPayment(s.paymentMethod || 'Otro', s.totalUsd || 0, s.totalBs || 0);
             }
         });
@@ -153,27 +221,31 @@ export async function GET(req) {
             const currency = methodConfig?.currency || 'USD';
             const isBs = currency.toUpperCase().includes('BS');
 
-            if (!expenseBreakdown[methodName]) {
-                expenseBreakdown[methodName] = { count: 0, totalUsd: 0, totalBs: 0, currency, mainTotal: 0 };
-            }
-            expenseBreakdown[methodName].count++;
-
             // Valor literal del egreso
             const expUsd = exp.amountUsd || 0;
             const expBs = exp.amountBs || 0;
 
-            expenseBreakdown[methodName].totalUsd += expUsd;
-            expenseBreakdown[methodName].totalBs += expBs;
+            const isVale = exp.category === 'vale';
 
-            if (isBs) {
-                expenseBreakdown[methodName].mainTotal += expBs;
-                spentBs += expBs;
-            } else {
-                expenseBreakdown[methodName].mainTotal += expUsd;
-                spentUsd += expUsd;
+            if (!isVale) {
+                if (!expenseBreakdown[methodName]) {
+                    expenseBreakdown[methodName] = { count: 0, totalUsd: 0, totalBs: 0, currency, mainTotal: 0 };
+                }
+                expenseBreakdown[methodName].count++;
+
+                expenseBreakdown[methodName].totalUsd += expUsd;
+                expenseBreakdown[methodName].totalBs += expBs;
+
+                if (isBs) {
+                    expenseBreakdown[methodName].mainTotal += expBs;
+                    spentBs += expBs;
+                } else {
+                    expenseBreakdown[methodName].mainTotal += expUsd;
+                    spentUsd += expUsd;
+                }
             }
 
-            // Subtract from paymentBreakdown to show Net per method
+            // Subtract from paymentBreakdown to show Net per method (Physical cash leaves register)
             if (paymentBreakdown[methodName]) {
                 paymentBreakdown[methodName].totalUsd -= expUsd;
                 paymentBreakdown[methodName].totalBs -= expBs;
@@ -263,6 +335,8 @@ export async function GET(req) {
                 spentBs,
                 trueNetUsd: collectedUsd - spentUsd + exchangeNetUsd,
                 trueNetBs: collectedBs - spentBs + exchangeNetBs,
+                totalValesUsd,
+                totalValesBs,
                 totalCostOfGoods,
                 totalProfit,
                 grossMarginPct,

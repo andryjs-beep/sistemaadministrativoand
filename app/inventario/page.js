@@ -12,6 +12,7 @@ export default function InventarioPage() {
     const [usage, setUsage] = useState({});
     const [logs, setLogs] = useState([]);
     const [user, setUser] = useState(null);
+    const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Caracas' })); // YYYY-MM-DD
 
     useEffect(() => {
         const stored = JSON.parse(localStorage.getItem('user'));
@@ -21,11 +22,12 @@ export default function InventarioPage() {
         fetchLogs();
     }, []);
 
-    const fetchUsage = async () => {
+    const fetchUsage = async (date) => {
         try {
-            const res = await fetch('/api/inventory/daily-usage');
+            const targetDate = date || selectedDate;
+            const res = await fetch(`/api/inventory/daily-usage?date=${targetDate}`);
             const data = await res.json();
-            setUsage(data);
+            setUsage(data.consumption || {});
         } catch (e) { console.error(e); }
     };
 
@@ -87,16 +89,30 @@ export default function InventarioPage() {
 
     return (
         <div className="p-4 md:p-10 bg-gray-50 min-h-screen font-sans text-slate-900">
-            <header className="mb-8 md:mb-12">
-                <p className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] mb-2">Control Logístico</p>
-                <h1 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tight leading-none">Gestión de <span className="text-blue-600">Inventario</span></h1>
+            <header className="mb-8 md:mb-12 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                    <p className="text-xs font-black text-gray-400 uppercase tracking-[0.3em] mb-2">Control Logístico</p>
+                    <h1 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tight leading-none">Gestión de <span className="text-blue-600">Inventario</span></h1>
+                </div>
+                <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4">
+                    <span className="text-xs font-black text-gray-400 uppercase tracking-widest hidden md:block">Ver Día:</span>
+                    <input
+                        type="date"
+                        className="bg-gray-50 border-none rounded-xl px-4 py-2 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+                        value={selectedDate}
+                        onChange={(e) => {
+                            setSelectedDate(e.target.value);
+                            fetchUsage(e.target.value);
+                        }}
+                    />
+                </div>
             </header>
 
             {/* RESUMEN DE CONSUMO DIARIO */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
                 <div className="bg-slate-900 text-white p-6 rounded-[32px] shadow-2xl relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consumo Reciente (7 días)</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Consumo: {selectedDate}</p>
                         <h4 className="text-2xl font-black tracking-tight mb-4 text-emerald-400">Bodega CAS</h4>
                         <div className="flex justify-between items-end">
                             <div>
@@ -113,7 +129,7 @@ export default function InventarioPage() {
 
                 <div className="bg-white p-6 rounded-[32px] shadow-xl border border-blue-100 relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Consumo Reciente (7 días)</p>
+                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Consumo: {selectedDate}</p>
                         <h4 className="text-2xl font-black tracking-tight mb-4 text-slate-800 uppercase">Bodega PAL</h4>
                         <div className="flex justify-between items-end">
                             <div>
@@ -130,7 +146,7 @@ export default function InventarioPage() {
 
                 <div className="bg-orange-600 text-white p-6 rounded-[32px] shadow-2xl relative overflow-hidden group">
                     <div className="relative z-10">
-                        <p className="text-[10px] font-black text-orange-200 uppercase tracking-widest mb-1">Consumo Reciente (7 días)</p>
+                        <p className="text-[10px] font-black text-orange-200 uppercase tracking-widest mb-1">Consumo: {selectedDate}</p>
                         <h4 className="text-2xl font-black tracking-tight mb-4 text-white uppercase">MICRODURAZNO</h4>
                         <div className="flex justify-between items-end">
                             <div>
@@ -147,7 +163,7 @@ export default function InventarioPage() {
 
                 <div className="bg-emerald-500 text-white p-6 rounded-[32px] shadow-2xl flex items-center justify-center text-center">
                     <div>
-                        <p className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-80">Total Reciente (7 días)</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-80">Total del Día</p>
                         <p className="text-5xl font-black tracking-tighter leading-none">
                             <span className="text-xl">$</span>{(Object.values(usage).reduce((acc, curr) => acc + curr.costUsd, 0)).toFixed(2)}
                         </p>

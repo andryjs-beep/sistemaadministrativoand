@@ -19,7 +19,9 @@ export default function DashboardPage() {
         spentUsd: 0,
         spentBs: 0,
         trueNetUsd: 0,
-        trueNetBs: 0
+        trueNetBs: 0,
+        totalValesUsd: 0,
+        totalValesBs: 0
     });
     const [rates, setRates] = useState({ usd: 36.5, eur: 39.8 });
     const [recentSales, setRecentSales] = useState([]);
@@ -30,9 +32,13 @@ export default function DashboardPage() {
     const [tempPercentage, setTempPercentage] = useState(0);
 
     useEffect(() => {
+        fetchStats();
         fetchTodayReport();
         fetchBcv();
-        const interval = setInterval(fetchTodayReport, 60000);
+        const interval = setInterval(() => {
+            fetchStats();
+            fetchTodayReport();
+        }, 60000);
         const rateInterval = setInterval(fetchBcv, 60 * 60 * 1000); // 60 minutos
         return () => {
             clearInterval(interval);
@@ -106,7 +112,9 @@ export default function DashboardPage() {
                     spentUsd: data.summary.spentUsd || 0,
                     spentBs: data.summary.spentBs || 0,
                     trueNetUsd: data.summary.trueNetUsd || 0,
-                    trueNetBs: data.summary.trueNetBs || 0
+                    trueNetBs: data.summary.trueNetBs || 0,
+                    totalValesUsd: data.summary.totalValesUsd || 0,
+                    totalValesBs: data.summary.totalValesBs || 0
                 }));
             }
 
@@ -266,7 +274,7 @@ export default function DashboardPage() {
             </div>
 
             {/* ===== TOTALES DEL DÍA ===== */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
                 <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-[32px] text-white shadow-xl col-span-2">
                     <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-1">Ingresos Brutos Recaudados</p>
                     <div className="flex justify-between items-end mt-2">
@@ -284,6 +292,11 @@ export default function DashboardPage() {
                     <p className="text-[9px] font-black text-red-400 uppercase tracking-widest mb-1">Gastos / Egresos</p>
                     <p className="text-xl font-black text-red-600">${stats.spentUsd.toFixed(2)} <span className="text-[10px] text-red-400">USD</span></p>
                     <p className="text-lg font-black text-red-500 mt-1">Bs. {stats.spentBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div className="bg-amber-50 p-6 rounded-[32px] border border-amber-100 flex flex-col justify-center">
+                    <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-1">Vales a Empleados</p>
+                    <p className="text-xl font-black text-amber-600">${stats.totalValesUsd.toFixed(2)} <span className="text-[10px] text-amber-500">USD</span></p>
+                    <p className="text-lg font-black text-amber-500 mt-1">Bs. {stats.totalValesBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</p>
                 </div>
                 <div className="bg-emerald-50 p-6 rounded-[32px] border border-emerald-100 flex flex-col justify-center relative">
                     <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-1">Caja Neta Diaria</p>

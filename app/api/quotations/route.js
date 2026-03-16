@@ -18,11 +18,10 @@ export async function POST(req) {
     await dbConnect();
     try {
         const body = await req.json();
-        const { items } = body;
+        const { items, customerId, userId } = body;
 
-        const latestRate = await ExchangeRate.findOne().sort({ createdAt: -1 });
+        const latestRate = await ExchangeRate.findOne({ type: 'EUR' }).sort({ date: -1 });
         const bcvRate = latestRate ? latestRate.value : 36.5;
-        const PERCENTAGE_EXTRA = 0.15;
 
         let totalUsd = 0;
         let totalBs = 0;
@@ -30,25 +29,36 @@ export async function POST(req) {
         const quotationItems = [];
 
         for (const item of items) {
-            const product = await Product.findById(item.productId);
-            if (!product) throw new Error('Producto no encontrado');
+            let productName = item.name;
+            let productCode = item.code;
+            let unitPriceUsd = item.priceUsd;
 
-            const priceUsd = product.priceUsd;
-            const priceBs = priceUsd * (1 + PERCENTAGE_EXTRA) * bcvRate;
+            // Si es un producto real, podemos verificarlo pero usamos los valores del POS
+            if (!item.isVirtual) {
+                const product = await Product.findById(item.productId);
+                if (product) {
+                    productName = product.name;
+                    productCode = product.code;
+                }
+            }
 
-            const subtotalUsd = priceUsd * item.quantity;
-            const subtotalBs = priceBs * item.quantity;
+            const discountValue = parseFloat(item.discountValue) || 0;
+            const subtotalUsd = (unitPriceUsd * (item.quantity || 1)) - discountValue;
+            const subtotalBs = subtotalUsd * bcvRate;
 
-            totalUsd += subtotalUsd;
-            totalBs += subtotalBs;
+            totalUsd += Math.max(0, subtotalUsd);
+            totalBs += Math.max(0, subtotalBs);
 
             quotationItems.push({
-                productId: product._id,
+                productId: item.isVirtual ? null : item.productId,
+                productName,
+                productCode,
                 quantity: item.quantity,
-                priceUsd,
-                priceBs,
+                priceUsd: unitPriceUsd,
+                priceBs: unitPriceUsd * bcvRate,
                 subtotalUsd,
-                subtotalBs
+                subtotalBs,
+                discountValue
             });
         }
 
@@ -57,11 +67,19 @@ export async function POST(req) {
             items: quotationItems,
             totalUsd,
             totalBs,
-            status: 'open'
+            customerId: customerId || null,
+            userId: userId || null,
+            status: 'open',
+            date: new Date()
         });
 
-        return NextResponse.json(newQuotation, { status: 201 });
+        const populatedQuote = await Quotation.findById(newQuotation._id)
+            .populate('customerId', 'name idNumber')
+            .populate('userId', 'username');
+
+        return NextResponse.json(populatedQuote, { status: 201 });
     } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 400 });
     }
 }
+
