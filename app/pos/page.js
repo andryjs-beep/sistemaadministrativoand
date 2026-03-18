@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import BoletaTicket from '@/components/print/BoletaTicket';
 
-export default function PosPage() {
+function PosContent() {
     const [products, setProducts] = useState([]);
     const [customers, setCustomers] = useState([]);
     const [cart, setCart] = useState([]);
@@ -24,6 +25,43 @@ export default function PosPage() {
     const [customUsdRate, setCustomUsdRate] = useState(null);
     const [showRateDialog, setShowRateDialog] = useState(false);
     const [tempRateInput, setTempRateInput] = useState({ eur: '', usd: '' });
+
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const [editingQuoteId, setEditingQuoteId] = useState(null);
+
+    useEffect(() => {
+        const quoteId = searchParams.get('editQuote');
+        if (quoteId) {
+            setEditingQuoteId(quoteId);
+            loadQuotation(quoteId);
+        }
+    }, [searchParams]);
+
+    const loadQuotation = async (id) => {
+        try {
+            const res = await fetch(`/api/quotations/${id}`);
+            if (res.ok) {
+                const quote = await res.json();
+                setTransactionType('cotizacion');
+                setSelectedCustomerId(quote.customerId?._id || quote.customerId || '');
+                setCustomerSearch(quote.customerId?.name || '');
+
+                const cartItems = quote.items.map(item => ({
+                    _id: item.productId?._id || item.productId || `manual-${Date.now()}-${Math.random()}`,
+                    name: item.productName,
+                    code: item.productCode,
+                    priceUsd: item.priceUsd,
+                    quantity: item.quantity,
+                    discountValue: item.discountValue,
+                    isVirtual: !item.productId,
+                    stock: item.productId?.stock || 999999,
+                    isBanner: item.productCode === 'BANNER-IMP'
+                }));
+                setCart(cartItems);
+            }
+        } catch (e) { console.error('Error loading quotation', e); }
+    };
 
     useEffect(() => {
         fetchProducts();
@@ -278,7 +316,13 @@ export default function PosPage() {
         try {
             const storedUser = JSON.parse(localStorage.getItem('user'));
             const isQuote = transactionType === 'cotizacion';
-            const endpoint = isQuote ? '/api/quotations' : '/api/sales';
+            let endpoint = isQuote ? '/api/quotations' : '/api/sales';
+            let method = 'POST';
+
+            if (isQuote && editingQuoteId) {
+                endpoint = `/api/quotations/${editingQuoteId}`;
+                method = 'PUT';
+            }
 
             const paymentsPayload = selectedMethods
                 .filter(p => !isQuote && p.amount > 0)
@@ -312,7 +356,7 @@ export default function PosPage() {
             }
 
             const res = await fetch(endpoint, {
-                method: 'POST',
+                method: method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
@@ -325,6 +369,8 @@ export default function PosPage() {
                 setCustomerSearch('');
                 setSelectedMethods([]);
                 setTransactionType('contado');
+                setEditingQuoteId(null);
+                if (method === 'PUT') router.push('/cotizaciones');
                 fetchProducts();
 
                 let msg = '¡Venta completada con éxito!';
@@ -830,7 +876,22 @@ export default function PosPage() {
                 @media print { .no-print { display: none !important; } }
                 ${lastSale ? 'body { overflow: hidden !important; }' : ''}
             `}</style>
-            </div >
+            </div>
         </div>
+    );
+}
+
+export default function PosPage() {
+    return (
+        <Suspense fallback={
+            <div className="h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-slate-600 font-black uppercase tracking-widest text-xs">Cargando POS...</p>
+                </div>
+            </div>
+        }>
+            <PosContent />
+        </Suspense>
     );
 }

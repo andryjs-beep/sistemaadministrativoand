@@ -17,6 +17,7 @@ const NAV_ITEMS = [
     { href: '/metodos-pago', icon: '💳', label: 'Metodos de Pago', roles: ['admin'] },
     { href: '/cotizaciones', icon: '📋', label: 'Cotizaciones', roles: ['admin', 'vendedor'] },
     { href: '/reportes', icon: '📊', label: 'Reportes', roles: ['admin'] },
+    { href: '/liquidaciones', icon: '💰', label: 'Liquidaciones', roles: ['admin'] },
     { href: '/usuarios', icon: '🛡️', label: 'Usuarios', roles: ['admin'] },
     { href: '/empresa', icon: '🏢', label: 'Empresa', roles: ['admin'] },
 ];

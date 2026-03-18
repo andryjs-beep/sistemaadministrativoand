@@ -59,8 +59,8 @@ const BoletaTicket = ({ sale }) => {
                                         {item.productId?.name || item.productName || item.productCode || 'Producto'}
                                     </div>
                                 </td>
-                                <td className="py-1 text-right whitespace-nowrap">${(item.priceUsd || 0).toFixed(2)}</td>
-                                <td className="py-1 text-right whitespace-nowrap font-bold">${item.subtotalUsd.toFixed(2)}</td>
+                                <td className="py-1 text-right whitespace-nowrap pl-4">${(item.priceUsd || 0).toFixed(2)}</td>
+                                <td className="py-1 text-right whitespace-nowrap pl-4 font-bold">${item.subtotalUsd.toFixed(2)}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -125,27 +125,36 @@ const BoletaTicket = ({ sale }) => {
 
             <style jsx global>{`
         @media print {
-          body * { visibility: hidden; }
-          #ticket-print-wrapper, #ticket-print-wrapper * { visibility: visible; }
-          #ticket-print-wrapper { 
-            position: absolute; 
-            left: 0; 
-            top: 0; 
-            width: 100%; 
-            background: white;
+          /* Hide everything except the ticket */
+          body > *:not(#ticket-print-wrapper) {
+            display: none !important;
           }
+          
+          #ticket-print-wrapper { 
+            display: block !important;
+            position: absolute !important; 
+            left: 0 !important; 
+            top: 0 !important; 
+            width: 100% !important; 
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+          }
+          
           #ticket-print { 
             border: none !important; 
-            padding: 0 !important; 
-            width: 100% !important; 
-            max-width: none !important; 
-            margin: 0 !important;
+            padding: 10px !important; 
+            width: 80mm !important; 
+            max-width: 80mm !important; 
+            margin: 0 auto !important;
+            box-shadow: none !important;
           }
-          /* Define 80mm (thermal receipt) width, and standard A4 length (cut by thermal printers) */
+
           @page { 
             margin: 0; 
-            size: 72mm 297mm; 
+            size: auto; 
           }
+        }
       `}</style>
         </div>
     );

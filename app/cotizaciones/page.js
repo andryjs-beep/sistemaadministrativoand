@@ -54,6 +54,20 @@ export default function CotizacionesPage() {
         } catch (e) { alert('Error de conexión'); }
     };
 
+    const deleteQuote = async (id) => {
+        if (!confirm('¿Estás seguro de eliminar esta cotización?')) return;
+        try {
+            const res = await fetch(`/api/quotations/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                alert('Cotización eliminada');
+                fetchQuotes();
+            } else {
+                const err = await res.json();
+                alert(`Error: ${err.error}`);
+            }
+        } catch (e) { alert('Error de conexión'); }
+    };
+
     return (
         <div className="p-4 md:p-10 bg-gray-50 min-h-full font-sans">
             <header className="mb-8 md:mb-10 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
@@ -101,6 +115,8 @@ export default function CotizacionesPage() {
                                                 <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest flex items-center">Procesada</span>
                                             )}
                                             <button onClick={() => setSelectedQuoteForPrint(q)} className="px-4 py-2 bg-blue-600 text-white font-black text-[9px] uppercase tracking-widest rounded-xl hover:bg-blue-700 transition">Imprimir</button>
+                                            <button onClick={() => window.location.href = `/pos?editQuote=${q._id}`} className="px-4 py-2 bg-slate-100 text-slate-600 font-black text-[9px] uppercase tracking-widest rounded-xl hover:bg-slate-200 transition">Editar</button>
+                                            <button onClick={() => deleteQuote(q._id)} className="px-4 py-2 bg-red-50 text-red-600 font-black text-[9px] uppercase tracking-widest rounded-xl hover:bg-red-100 transition">Borrar</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -122,11 +138,14 @@ export default function CotizacionesPage() {
                                     <div className="flex flex-col gap-2">
                                         <button onClick={() => convertToSale(q)} className="p-2 px-3 bg-emerald-50 text-emerald-600 rounded-xl font-black text-[9px] uppercase">Facturar ⚡</button>
                                         <button onClick={() => setSelectedQuoteForPrint(q)} className="p-2 px-3 bg-blue-50 text-blue-600 rounded-xl font-black text-[9px] uppercase">Imprimir 🖨️</button>
+                                        <button onClick={() => window.location.href = `/pos?editQuote=${q._id}`} className="p-2 px-3 bg-slate-50 text-slate-600 rounded-xl font-black text-[9px] uppercase">Editar ✏️</button>
+                                        <button onClick={() => deleteQuote(q._id)} className="p-2 px-3 bg-red-50 text-red-600 rounded-xl font-black text-[9px] uppercase">Borrar 🗑️</button>
                                     </div>
                                 ) : (
                                     <div className="flex flex-col gap-2 items-end">
                                         <span className="text-[9px] font-black text-gray-300 uppercase">Procesada</span>
                                         <button onClick={() => setSelectedQuoteForPrint(q)} className="p-2 px-3 bg-blue-50 text-blue-600 rounded-xl font-black text-[9px] uppercase">Imprimir 🖨️</button>
+                                        <button onClick={() => deleteQuote(q._id)} className="p-2 px-3 bg-red-50 text-red-600 rounded-xl font-black text-[9px] uppercase">Borrar 🗑️</button>
                                     </div>
                                 )}
                             </div>

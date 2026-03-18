@@ -33,7 +33,8 @@ export default function ProveedoresPage() {
     const [loading, setLoading] = useState(false);
     const [editProv, setEditProv] = useState(null);
     const [editExp, setEditExp] = useState(null);
-    const [filterDate, setFilterDate] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [filterProvider, setFilterProvider] = useState('');
 
 
@@ -171,9 +172,11 @@ export default function ProveedoresPage() {
     };
 
     const filteredExpenses = expenses.filter(e => {
-        const matchesDate = filterDate ? new Date(e.date).toISOString().startsWith(filterDate) : true;
+        const expDate = new Date(e.date).toISOString().split('T')[0];
+        const matchesStart = startDate ? expDate >= startDate : true;
+        const matchesEnd = endDate ? expDate <= endDate : true;
         const matchesProvider = filterProvider ? (e.providerId?._id === filterProvider || e.providerId === filterProvider) : true;
-        return matchesDate && matchesProvider;
+        return matchesStart && matchesEnd && matchesProvider;
     });
 
     const totalUsd = filteredExpenses.reduce((s, e) => s + (e.amountUsd || 0), 0);
@@ -227,10 +230,20 @@ export default function ProveedoresPage() {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{method}</p>
-                                    <p className={`text-base font-black ${isBs ? 'text-orange-600' : 'text-red-600'} tracking-tighter`}>
-                                        {isBs ? 'Bs. ' : '$'}
-                                        {(isBs ? totals.bs : totals.usd).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
-                                    </p>
+                                    <div className="flex flex-col">
+                                        {totals.usd > 0 && (
+                                            <p className="text-sm font-black text-red-600 tracking-tighter flex items-center gap-1">
+                                                <span className="text-[10px] opacity-40">$</span>
+                                                {totals.usd.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                            </p>
+                                        )}
+                                        {totals.bs > 0 && (
+                                            <p className="text-sm font-black text-orange-600 tracking-tighter flex items-center gap-1">
+                                                <span className="text-[10px] opacity-40">Bs.</span>
+                                                {totals.bs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                                            </p>
+                                        )}
+                                    </div>
                                     <p className="text-[8px] font-bold text-gray-300 italic">{totals.count} registros</p>
                                 </div>
                             </div>
@@ -360,7 +373,7 @@ export default function ProveedoresPage() {
                                 <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.3em]">Historial de Gastos</h3>
                                 <span className="text-[10px] font-bold text-slate-400 italic">Ordenado por fecha</span>
                             </div>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-wrap gap-2 items-center">
                                 <select
                                     className="p-3 rounded-2xl bg-white border border-gray-200 outline-none font-bold text-slate-600 text-xs shadow-sm focus:ring-2 focus:ring-orange-500 cursor-pointer"
                                     value={filterProvider} onChange={(e) => setFilterProvider(e.target.value)}
@@ -370,9 +383,29 @@ export default function ProveedoresPage() {
                                         <option key={p._id} value={p._id}>{p.name}</option>
                                     ))}
                                 </select>
-                                <input type="date"
-                                    className="p-3 rounded-2xl bg-white border border-gray-200 outline-none font-bold text-slate-600 text-xs shadow-sm focus:ring-2 focus:ring-orange-500 cursor-pointer"
-                                    value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
+                                <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-gray-100 shadow-sm">
+                                    <div className="flex flex-col px-2">
+                                        <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest">Desde</span>
+                                        <input type="date"
+                                            className="bg-transparent border-none outline-none font-bold text-slate-600 text-[10px] cursor-pointer"
+                                            value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                                    </div>
+                                    <div className="w-[1px] h-6 bg-gray-100"></div>
+                                    <div className="flex flex-col px-2">
+                                        <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest">Hasta</span>
+                                        <input type="date"
+                                            className="bg-transparent border-none outline-none font-bold text-slate-600 text-[10px] cursor-pointer"
+                                            value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                                    </div>
+                                </div>
+                                {(startDate || endDate || filterProvider) && (
+                                    <button
+                                        onClick={() => { setStartDate(''); setEndDate(''); setFilterProvider(''); }}
+                                        className="p-3 rounded-2xl bg-red-50 text-red-500 font-black text-[9px] uppercase tracking-widest hover:bg-red-500 hover:text-white transition shadow-sm"
+                                    >
+                                        Limpiar
+                                    </button>
+                                )}
                             </div>
                         </div>
                         {filteredExpenses.map(ex => (
