@@ -2,25 +2,169 @@
 
 import React, { useState, useEffect } from 'react';
 
+// ─── Helper: genera HTML puro del ticket para imprimir en ventana nueva ───────
+export function buildTicketHTML(sale, company) {
+    const customerName = sale.customerId?.name || sale.customerName || null;
+    const customerIdNumber = sale.customerId?.idNumber || sale.customerIdNumber || null;
+    const customerPhone = sale.customerId?.phone || sale.customerPhone || null;
+
+    const itemsRows = (sale.items || []).map(item => `
+        <tr>
+            <td style="padding:4px 2px;">${item.quantity}</td>
+            <td style="padding:4px 4px 4px 2px;font-weight:bold;font-size:11px;text-transform:uppercase;">
+                ${item.productId?.name || item.productName || item.productCode || 'Producto'}
+            </td>
+            <td style="padding:4px 2px;text-align:right;white-space:nowrap;">$${(item.priceUsd || 0).toFixed(2)}</td>
+            <td style="padding:4px 2px;text-align:right;white-space:nowrap;font-weight:bold;">$${(item.subtotalUsd || 0).toFixed(2)}</td>
+        </tr>
+    `).join('');
+
+    const paymentMethodSection = !sale.quotationId ? `
+        <p><strong>Método de Pago:</strong> ${sale.paymentMethod || ''}</p>
+        ${sale.accountNumber ? `<p><strong>Cuenta:</strong> ${sale.accountNumber}</p>` : ''}
+        ${sale.payments && sale.payments.length > 1 ? `
+            <div style="border-top:1px dashed #000;margin-top:8px;padding-top:8px;">
+                <p style="font-weight:bold;font-size:11px;text-transform:uppercase;margin:0 0 4px;">Desglose de Pagos:</p>
+                ${sale.payments.map(p => `
+                    <p style="font-size:11px;display:flex;justify-content:space-between;margin:2px 0;">
+                        <span>${p.method} (${p.currency})</span>
+                        <span>$${(p.amountUsd || 0).toFixed(2)}</span>
+                    </p>
+                `).join('')}
+            </div>
+        ` : ''}
+    ` : '';
+
+    const creditSection = sale.isCredit ? `
+        <p style="display:flex;justify-content:space-between;font-size:12px;">
+            <span style="font-weight:bold;text-transform:uppercase;">Monto Abonado:</span>
+            <span>$${(sale.totalPaidUsd || 0).toFixed(2)}</span>
+        </p>
+        <hr style="border:none;border-top:1px solid #eee;margin:4px 0;">
+        <p style="display:flex;justify-content:space-between;font-size:13px;">
+            <span style="font-weight:bold;text-transform:uppercase;">Saldo Pendiente:</span>
+            <span style="font-weight:bold;color:#dc2626;">$${Math.max(0, sale.totalUsd - (sale.totalPaidUsd || 0)).toFixed(2)}</span>
+        </p>
+    ` : '';
+
+    const footer = sale.quotationId
+        ? '¡Atención! El total en Bs. está sujeto a cambios según la tasa de cambio del día al momento del pago.'
+        : '¡Gracias por su compra!';
+
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Ticket ${sale.saleId || sale.quotationId || ''}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            color: #000;
+            background: #fff;
+            width: 80mm;
+            margin: 0 auto;
+            padding: 10px;
+        }
+        h2 { font-size: 15px; font-weight: bold; text-transform: uppercase; }
+        p { margin: 2px 0; }
+        .center { text-align: center; }
+        .dashed { border-top: 1px dashed #000; margin: 8px 0; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th { border-bottom: 1px solid #000; padding: 4px 2px; text-align: left; font-size: 11px; }
+        th:nth-child(3), th:nth-child(4) { text-align: right; }
+        .total-line { display: flex; justify-content: space-between; }
+        .client-box { border: 1px solid #ddd; padding: 4px; border-radius: 4px; margin-top: 8px; font-size: 12px; }
+        @page { margin: 0; size: 80mm auto; }
+    </style>
+</head>
+<body>
+    <div class="center">
+        <h2>${company.name || 'MI EMPRESA'}</h2>
+        ${company.rif ? `<p>RIF: ${company.rif}</p>` : ''}
+        ${company.address ? `<p style="font-size:11px;">${company.address}</p>` : ''}
+        ${company.phone ? `<p style="font-size:11px;">Tlf: ${company.phone}</p>` : ''}
+        ${company.email ? `<p style="font-size:11px;">${company.email}</p>` : ''}
+        <div class="dashed"></div>
+        <p>Fecha: ${new Date(sale.date).toLocaleString('es-VE')}</p>
+        <p style="font-weight:bold;font-size:14px;">${sale.quotationId ? 'COTIZACIÓN' : 'VENTA'}: ${sale.quotationId || sale.saleId}</p>
+        ${customerName ? `
+        <div class="client-box" style="text-align:left;">
+            <p style="font-weight:bold;">CLIENTE: ${customerName}</p>
+            ${customerIdNumber ? `<p>C.I/RIF: ${customerIdNumber}</p>` : ''}
+            ${customerPhone ? `<p>TLF: ${customerPhone}</p>` : ''}
+        </div>
+        ` : ''}
+    </div>
+
+    <div class="dashed"></div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Cant.</th>
+                <th>Producto</th>
+                <th style="text-align:right;">P.U</th>
+                <th style="text-align:right;">Total</th>
+            </tr>
+        </thead>
+        <tbody>${itemsRows}</tbody>
+    </table>
+
+    <div class="dashed"></div>
+
+    <div>
+        <p class="total-line" style="font-size:15px;font-weight:bold;">
+            <span style="text-transform:uppercase;">${sale.isCredit ? 'Total a Pagar:' : 'TOTAL USD:'}</span>
+            <span>$${(sale.totalUsd || 0).toFixed(2)}</span>
+        </p>
+        ${creditSection}
+        <p class="total-line" style="font-size:15px;font-weight:bold;margin-top:4px;">
+            <span>TOTAL BS:</span>
+            <span>Bs. ${(sale.totalBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
+        </p>
+    </div>
+
+    <div class="dashed"></div>
+
+    <div style="margin-top:8px;">
+        ${paymentMethodSection}
+    </div>
+
+    <div class="center" style="margin-top:16px;font-size:10px;font-style:italic;">
+        <p>${footer}</p>
+    </div>
+
+    <script>
+        window.onload = function() {
+            window.print();
+            setTimeout(function() { window.close(); }, 500);
+        };
+    </script>
+</body>
+</html>`;
+}
+
+// ─── Componente visual del ticket (preview en pantalla) ────────────────────────
 const BoletaTicket = ({ sale }) => {
     const [company, setCompany] = useState({ name: 'MI EMPRESA', rif: '', address: '', phone: '', email: '' });
 
     useEffect(() => {
-        fetchCompany();
+        fetch('/api/company')
+            .then(r => r.json())
+            .then(d => { if (d && !d.error) setCompany(d); })
+            .catch(() => { });
     }, []);
-
-    const fetchCompany = async () => {
-        try {
-            const res = await fetch('/api/company');
-            const data = await res.json();
-            if (data && !data.error) setCompany(data);
-        } catch (e) { /* silencioso */ }
-    };
 
     if (!sale) return null;
 
+    const customerName = sale.customerId?.name || sale.customerName || null;
+    const customerIdNumber = sale.customerId?.idNumber || sale.customerIdNumber || null;
+    const customerPhone = sale.customerId?.phone || sale.customerPhone || null;
+
     return (
-        <div id="ticket-print-wrapper" className="w-full">
+        <div className="w-full">
             <div id="ticket-print" className="p-4 bg-white text-black font-mono text-sm max-w-[300px] mx-auto border border-gray-200">
                 <div className="text-center mb-4">
                     <h2 className="font-bold text-lg uppercase">{company.name}</h2>
@@ -31,10 +175,11 @@ const BoletaTicket = ({ sale }) => {
                     <div className="border-t border-dashed my-2"></div>
                     <p>Fecha: {new Date(sale.date).toLocaleString()}</p>
                     <p className="font-bold text-base">{sale.quotationId ? 'COTIZACIÓN' : 'VENTA'}: {sale.quotationId || sale.saleId}</p>
-                    {(sale.customerId?.name || sale.customerName) && (
-                        <div className="mt-2 text-xs border border-gray-100 p-1 rounded">
-                            <p className="font-bold">CLIENTE: {sale.customerId?.name || sale.customerName}</p>
-                            {(sale.customerId?.phone || sale.customerPhone) && <p>TLF: {sale.customerId?.phone || sale.customerPhone}</p>}
+                    {customerName && (
+                        <div className="mt-2 text-xs border border-gray-100 p-1 rounded text-left">
+                            <p className="font-bold">CLIENTE: {customerName}</p>
+                            {customerIdNumber && <p>C.I/RIF: {customerIdNumber}</p>}
+                            {customerPhone && <p>TLF: {customerPhone}</p>}
                         </div>
                     )}
                 </div>
@@ -60,7 +205,7 @@ const BoletaTicket = ({ sale }) => {
                                     </div>
                                 </td>
                                 <td className="py-1 text-right whitespace-nowrap pl-4">${(item.priceUsd || 0).toFixed(2)}</td>
-                                <td className="py-1 text-right whitespace-nowrap pl-4 font-bold">${item.subtotalUsd.toFixed(2)}</td>
+                                <td className="py-1 text-right whitespace-nowrap pl-4 font-bold">${(item.subtotalUsd || 0).toFixed(2)}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -71,9 +216,8 @@ const BoletaTicket = ({ sale }) => {
                 <div className="space-y-1">
                     <p className="flex justify-between">
                         <span className="font-bold uppercase text-lg">{sale.isCredit ? 'Total a Pagar:' : 'Total USD:'}</span>
-                        <span className="font-bold text-lg">${sale.totalUsd.toFixed(2)}</span>
+                        <span className="font-bold text-lg">${(sale.totalUsd || 0).toFixed(2)}</span>
                     </p>
-
                     {sale.isCredit && (
                         <>
                             <p className="flex justify-between text-sm">
@@ -87,10 +231,9 @@ const BoletaTicket = ({ sale }) => {
                             </p>
                         </>
                     )}
-
                     <p className="flex justify-between">
                         <span className="font-bold uppercase text-lg">Total BS:</span>
-                        <span className="font-bold text-lg">Bs. {sale.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
+                        <span className="font-bold text-lg">Bs. {(sale.totalBs || 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
                     </p>
                 </div>
 
@@ -103,15 +246,13 @@ const BoletaTicket = ({ sale }) => {
                             {sale.accountNumber && <p><strong>Cuenta:</strong> {sale.accountNumber}</p>}
                         </>
                     )}
-
-                    {/* Multi-pagos detallados */}
                     {!sale.quotationId && sale.payments && sale.payments.length > 1 && (
                         <div className="mt-2 border-t border-dashed pt-2">
                             <p className="font-bold text-xs uppercase mb-1">Desglose de Pagos:</p>
                             {sale.payments.map((p, idx) => (
                                 <p key={idx} className="text-xs flex justify-between">
                                     <span>{p.method} ({p.currency})</span>
-                                    <span>${p.amountUsd.toFixed(2)}</span>
+                                    <span>${(p.amountUsd || 0).toFixed(2)}</span>
                                 </p>
                             ))}
                         </div>
@@ -122,40 +263,6 @@ const BoletaTicket = ({ sale }) => {
                     <p>{sale.quotationId ? '¡Atención! El total en Bs. está sujeto a cambios según la tasa de cambio del día al momento del pago.' : '¡Gracias por su compra!'}</p>
                 </div>
             </div>
-
-            <style jsx global>{`
-        @media print {
-          /* Hide everything except the ticket */
-          body > *:not(#ticket-print-wrapper) {
-            display: none !important;
-          }
-          
-          #ticket-print-wrapper { 
-            display: block !important;
-            position: absolute !important; 
-            left: 0 !important; 
-            top: 0 !important; 
-            width: 100% !important; 
-            margin: 0 !important;
-            padding: 0 !important;
-            background: white !important;
-          }
-          
-          #ticket-print { 
-            border: none !important; 
-            padding: 10px !important; 
-            width: 80mm !important; 
-            max-width: 80mm !important; 
-            margin: 0 auto !important;
-            box-shadow: none !important;
-          }
-
-          @page { 
-            margin: 0; 
-            size: auto; 
-          }
-        }
-      `}</style>
         </div>
     );
 };

@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import SaleDetailModal from '@/components/modals/SaleDetailModal';
-import BoletaTicket from '@/components/print/BoletaTicket';
+import BoletaTicket, { buildTicketHTML } from '@/components/print/BoletaTicket';
 
 export default function ReportesPage() {
     const [user, setUser] = useState(null);
     const [data, setData] = useState(null);
     const [detailSale, setDetailSale] = useState(null);
     const [printSale, setPrintSale] = useState(null);
+    const [printCompany, setPrintCompany] = useState({ name: 'MI EMPRESA', rif: '', address: '', phone: '', email: '' });
     const [loading, setLoading] = useState(false);
     const [reportType, setReportType] = useState('daily');
     const [dateFrom, setDateFrom] = useState('');
@@ -53,6 +54,9 @@ export default function ReportesPage() {
         }).catch(e => console.error(e));
 
         fetchReport();
+
+        // Preload company data for printing
+        fetch('/api/company').then(r => r.json()).then(d => { if (d && !d.error) setPrintCompany(d); }).catch(() => { });
     }, [fetchReport]);
 
     const deleteSale = async (id) => {
@@ -388,7 +392,11 @@ export default function ReportesPage() {
                         <div className="bg-white p-6 md:p-10 rounded-[40px] md:rounded-[50px] shadow-2xl max-w-sm w-full relative border-[8px] md:border-[12px] border-slate-50">
                             <BoletaTicket sale={printSale} />
                             <div className="mt-8 md:mt-10 flex flex-col gap-3 md:gap-4 no-print">
-                                <button onClick={() => { window.print(); setPrintSale(null); }} className="w-full py-5 md:py-6 bg-slate-900 text-white font-black rounded-2xl md:rounded-3xl uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform text-xs md:text-sm">🖨️ Imprimir Ticket</button>
+                                <button onClick={() => {
+                                    const html = buildTicketHTML(printSale, printCompany);
+                                    const w = window.open('', '_blank', 'width=420,height=700,toolbar=0,menubar=0,location=0');
+                                    if (w) { w.document.write(html); w.document.close(); }
+                                }} className="w-full py-5 md:py-6 bg-slate-900 text-white font-black rounded-2xl md:rounded-3xl uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform text-xs md:text-sm">🖨️ Imprimir Ticket</button>
                                 <button onClick={() => setPrintSale(null)} className="w-full py-3 text-gray-400 font-bold uppercase tracking-widest hover:text-red-500 transition-colors text-xs text-center border-t border-gray-100 pt-5">X Cerrar sin Imprimir</button>
                             </div>
                         </div>
